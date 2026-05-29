@@ -2,9 +2,16 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 
 package(default_visibility = ["//visibility:public"])
 
-# The toolchain type the rules resolve. Implementations live in the
-# module that ships the GALA transpiler (typically @gala).
+# Main toolchain type for the user-facing transpile and test rules.
+# Implementations live in the module that ships the GALA transpiler
+# binaries (typically @gala).
 toolchain_type(name = "toolchain_type")
+
+# Bootstrap toolchain type, used by gala_bootstrap_transpile only. Kept
+# separate from the main toolchain so that stdlib targets — which are
+# built with the bootstrap transpiler — do not pull in the full gala
+# transpiler binary, which in turn embeds the stdlib (a cycle).
+toolchain_type(name = "bootstrap_toolchain_type")
 
 # Build-time toggle for the persistent-worker transpile path.
 #

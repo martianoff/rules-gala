@@ -11,8 +11,6 @@ GalaToolchainInfo = provider(
         "gala_binary": "FilesToRunProvider: the gala transpiler.",
         "gala_worker": "FilesToRunProvider: the persistent-worker variant " +
                        "of the transpiler. Defaults to gala_binary if unset.",
-        "gala_bootstrap": "FilesToRunProvider: the bootstrap transpiler " +
-                          "used only when building the stdlib.",
         "test_runner": "FilesToRunProvider: gala_test_runner — invoked by " +
                        "gala_exec_test to diff actual vs expected output.",
         "test_runner_runfiles": "runfiles: the test_runner target's default " +
@@ -26,12 +24,25 @@ GalaToolchainInfo = provider(
     },
 )
 
+GalaBootstrapToolchainInfo = provider(
+    doc = "Bootstrap-only toolchain used by gala_bootstrap_transpile. " +
+          "Kept separate from GalaToolchainInfo so stdlib targets can be " +
+          "built without depending on the full transpiler binary, which " +
+          "embeds the stdlib it would otherwise need.",
+    fields = {
+        "gala_bootstrap": "FilesToRunProvider: the bootstrap transpiler.",
+        "all_gala_sources": "depset[File]: every .gala source in the workspace " +
+                            "the transpiler is allowed to --search.",
+        "go_mod": "File: the consuming repo's go.mod, used to derive its " +
+                  "module root for the transpiler's --search path.",
+    },
+)
+
 def _gala_toolchain_impl(ctx):
     worker = ctx.attr.gala_worker or ctx.attr.gala_binary
     info = GalaToolchainInfo(
         gala_binary = ctx.attr.gala_binary[DefaultInfo].files_to_run,
         gala_worker = worker[DefaultInfo].files_to_run,
-        gala_bootstrap = ctx.attr.gala_bootstrap[DefaultInfo].files_to_run if ctx.attr.gala_bootstrap else None,
         test_runner = ctx.attr.test_runner[DefaultInfo].files_to_run if ctx.attr.test_runner else None,
         test_runner_runfiles = ctx.attr.test_runner[DefaultInfo].default_runfiles if ctx.attr.test_runner else None,
         test_gen = ctx.attr.test_gen[DefaultInfo].files_to_run if ctx.attr.test_gen else None,
@@ -57,11 +68,6 @@ gala_toolchain = rule(
             doc = "The persistent-worker variant of the transpiler. " +
                   "If omitted, gala_binary is used for both.",
         ),
-        "gala_bootstrap": attr.label(
-            executable = True,
-            cfg = "exec",
-            doc = "Bootstrap transpiler used only for stdlib transpilation.",
-        ),
         "test_runner": attr.label(
             executable = True,
             cfg = "exec",
@@ -81,6 +87,37 @@ gala_toolchain = rule(
             allow_single_file = True,
             doc = "The consuming repo's go.mod. Its directory becomes the " +
                   "default --search path entry for the transpiler.",
+        ),
+    },
+)
+
+def _gala_bootstrap_toolchain_impl(ctx):
+    info = GalaBootstrapToolchainInfo(
+        gala_bootstrap = ctx.attr.gala_bootstrap[DefaultInfo].files_to_run,
+        all_gala_sources = depset(ctx.files.all_gala_sources),
+        go_mod = ctx.file.go_mod,
+    )
+    return [platform_common.ToolchainInfo(bootstrapinfo = info)]
+
+gala_bootstrap_toolchain = rule(
+    implementation = _gala_bootstrap_toolchain_impl,
+    doc = "Declare the bootstrap toolchain. Pair with a `toolchain()` " +
+          "declaration that binds this to " +
+          "`@rules_gala//gala:bootstrap_toolchain_type`.",
+    attrs = {
+        "gala_bootstrap": attr.label(
+            executable = True,
+            cfg = "exec",
+            mandatory = True,
+            doc = "The bootstrap transpiler binary.",
+        ),
+        "all_gala_sources": attr.label(
+            allow_files = [".gala"],
+            doc = "Filegroup of every .gala source in the workspace.",
+        ),
+        "go_mod": attr.label(
+            allow_single_file = True,
+            doc = "The consuming repo's go.mod.",
         ),
     },
 )

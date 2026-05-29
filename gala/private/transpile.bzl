@@ -12,6 +12,7 @@ Toggle at the build level:
 """
 
 _TOOLCHAIN = "@rules_gala//gala:toolchain_type"
+_BOOTSTRAP_TOOLCHAIN = "@rules_gala//gala:bootstrap_toolchain_type"
 
 # ---- shared helpers --------------------------------------------------------
 
@@ -319,11 +320,11 @@ def _gala_transpile_package_genrule(name, srcs, outs, extra_srcs, gala_deps):
 # ---- bootstrap -------------------------------------------------------------
 
 def _gala_bootstrap_transpile_impl(ctx):
-    info = ctx.toolchains[_TOOLCHAIN].galainfo
+    info = ctx.toolchains[_BOOTSTRAP_TOOLCHAIN].bootstrapinfo
     if not info.gala_bootstrap:
-        fail("gala_bootstrap_transpile requires a toolchain whose " +
-             "`gala_bootstrap` attribute is set. The toolchain in use " +
-             "does not provide one.")
+        fail("gala_bootstrap_transpile requires a registered " +
+             "@rules_gala//gala:bootstrap_toolchain_type toolchain. " +
+             "Register one with gala_bootstrap_toolchain in your repo.")
 
     args = ctx.actions.args()
     args.add("--input", ctx.file.src)
@@ -361,7 +362,7 @@ def _gala_bootstrap_transpile_impl(ctx):
 
 _gala_bootstrap_transpile = rule(
     implementation = _gala_bootstrap_transpile_impl,
-    toolchains = [_TOOLCHAIN],
+    toolchains = [_BOOTSTRAP_TOOLCHAIN],
     attrs = {
         "src": attr.label(allow_single_file = [".gala"], mandatory = True),
         "out": attr.output(mandatory = True),

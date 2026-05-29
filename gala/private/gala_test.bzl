@@ -17,7 +17,7 @@ load(
     "gala_transpile",
     "gala_transpile_package",
 )
-load("//gala/private:test_rules.bzl", "gala_unit_test_rule")
+load("//gala/private:test_rules.bzl", "gala_internal_unit_test")
 
 _TOOLCHAIN = "@rules_gala//gala:toolchain_type"
 _STDLIB = "@gala//std"
@@ -103,7 +103,7 @@ def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], l
     # The test framework sources must be on the transpiler's --search
     # path so it can resolve `T`, `RunCases`, etc. — except when the
     # package under test *is* the test framework itself.
-    test_extra_srcs = [Label(_TEST_GALA_SOURCES)] if pkg != "test" else []
+    test_extra_srcs = [_TEST_GALA_SOURCES] if pkg != "test" else []
 
     # Step 2: transpile lib_srcs (if any), then test srcs.
     transpiled_lib_srcs = [name + "_lib_" + str(i) + ".gen.go" for i in range(len(lib_srcs))]
@@ -147,9 +147,9 @@ def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], l
 
     final_deps = list(deps) + list(gala_deps)
     if pkg != "test":
-        final_deps.append(Label(_TEST_FRAMEWORK))
+        final_deps.append(_TEST_FRAMEWORK)
     if pkg != "std":
-        final_deps.append(Label(_STDLIB))
+        final_deps.append(_STDLIB)
 
     if pkg == "main":
         # External test: package main → wrap a go_binary as the test.
@@ -163,7 +163,7 @@ def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], l
             **kwargs
         )
 
-        gala_unit_test_rule(
+        gala_internal_unit_test(
             name = name,
             binary = ":" + binary_name,
             is_windows = select({

@@ -13,7 +13,7 @@ _TOOLCHAIN = "@rules_gala//gala:toolchain_type"
 
 # ---- exec test (stdout vs expected) ---------------------------------------
 
-def _exec_test_rule_impl(ctx):
+def _gala_internal_exec_test_impl(ctx):
     info = ctx.toolchains[_TOOLCHAIN].galainfo
     if not info.test_runner:
         fail("gala_exec_test requires a toolchain whose `test_runner` " +
@@ -49,8 +49,8 @@ def _exec_test_rule_impl(ctx):
 
     return [DefaultInfo(executable = executable, runfiles = runfiles)]
 
-_exec_test_rule = rule(
-    implementation = _exec_test_rule_impl,
+gala_internal_exec_test = rule(
+    implementation = _gala_internal_exec_test_impl,
     test = True,
     toolchains = [_TOOLCHAIN],
     attrs = {
@@ -74,7 +74,7 @@ def gala_exec_test(name, src = None, srcs = None, expected = "", deps = [], gala
         gala_deps = gala_deps,
         **kwargs
     )
-    _exec_test_rule(
+    gala_internal_exec_test(
         name = name,
         binary = ":" + binary_name,
         expected = expected,
@@ -86,7 +86,7 @@ def gala_exec_test(name, src = None, srcs = None, expected = "", deps = [], gala
 
 # ---- unit test (binary-as-test, no output diff) ---------------------------
 
-def _unit_test_rule_impl(ctx):
+def _gala_internal_unit_test_impl(ctx):
     binary = ctx.executable.binary
     extension = ".bat" if ctx.attr.is_windows else ".sh"
     executable = ctx.actions.declare_file(ctx.label.name + extension)
@@ -111,8 +111,8 @@ def _unit_test_rule_impl(ctx):
         runfiles = ctx.runfiles(files = [binary]).merge(binary_runfiles),
     )]
 
-gala_unit_test_rule = rule(
-    implementation = _unit_test_rule_impl,
+gala_internal_unit_test = rule(
+    implementation = _gala_internal_unit_test_impl,
     test = True,
     attrs = {
         "binary": attr.label(executable = True, cfg = "target", mandatory = True),
@@ -130,7 +130,7 @@ def gala_unit_test(name, src = None, srcs = None, deps = [], **kwargs):
         deps = deps,
         **kwargs
     )
-    gala_unit_test_rule(
+    gala_internal_unit_test(
         name = name,
         binary = ":" + binary_name,
         is_windows = select({

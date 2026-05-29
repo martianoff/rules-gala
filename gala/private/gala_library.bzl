@@ -69,7 +69,7 @@ def gala_library(name, src = None, srcs = None, importpath = "", deps = [], gala
             gala_deps = gala_deps,
         )
 
-    all_deps = list(deps) + list(gala_deps) + [Label(_STDLIB)]
+    all_deps = list(deps) + list(gala_deps) + [_STDLIB]
 
     go_library(
         name = name,
@@ -113,7 +113,7 @@ def gala_binary(name, src = None, srcs = None, deps = [], gala_deps = [], embeds
             gala_deps = gala_deps,
         )
 
-    all_deps = list(deps) + list(gala_deps) + [Label(_STDLIB)]
+    all_deps = list(deps) + list(gala_deps) + [_STDLIB]
 
     go_binary(
         name = name,
