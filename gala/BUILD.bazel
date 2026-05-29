@@ -1,0 +1,24 @@
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+
+package(default_visibility = ["//visibility:public"])
+
+# The toolchain type the rules resolve. Implementations live in the
+# module that ships the GALA transpiler (typically @gala).
+toolchain_type(name = "toolchain_type")
+
+# Build-time toggle for the persistent-worker transpile path.
+#
+#   bazel build --@rules_gala//gala:use_persistent_worker=false //...
+#
+# The default is ON. The non-worker (genrule) path is kept as an
+# escape hatch; in the worker path, one worker process per build
+# amortises analyzer cold-start across every per-package transpile.
+bool_flag(
+    name = "use_persistent_worker",
+    build_setting_default = True,
+)
+
+config_setting(
+    name = "persistent_worker_enabled",
+    flag_values = {":use_persistent_worker": "True"},
+)

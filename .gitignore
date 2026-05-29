@@ -1,0 +1,15 @@
+# Bazel
+/bazel-*
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local user settings
+user.bazelrc
+.bazelrc.user
