@@ -10,7 +10,10 @@
         "github:martianoff/gala-tui"
     ],
     "versions": [
-        "0.9.0"
+        "0.9.0",
+        "0.9.1"
     ],
-    "yanked_versions": {}
+    "yanked_versions": {
+        "0.9.0": "MODULE.bazel declared version 0.1.0 instead of 0.9.0, breaking Bazel bzlmod resolution. Use 0.9.1 instead."
+    }
 }
