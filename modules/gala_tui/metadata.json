@@ -1,0 +1,16 @@
+{
+    "homepage": "https://github.com/martianoff/gala-tui",
+    "maintainers": [
+        {
+            "github": "martianoff",
+            "name": "Maksim Martianov"
+        }
+    ],
+    "repository": [
+        "github:martianoff/gala-tui"
+    ],
+    "versions": [
+        "0.9.0"
+    ],
+    "yanked_versions": {}
+}
