@@ -9,6 +9,8 @@
     "repository": [
         "github:martianoff/gala"
     ],
-    "versions": [],
+    "versions": [
+        "0.51.0"
+    ],
     "yanked_versions": {}
 }
