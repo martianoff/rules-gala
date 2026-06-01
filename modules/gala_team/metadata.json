@@ -1,0 +1,16 @@
+{
+    "homepage": "https://github.com/martianoff/gala-team",
+    "maintainers": [
+        {
+            "github": "martianoff",
+            "name": "Maksim Martianov"
+        }
+    ],
+    "repository": [
+        "github:martianoff/gala-team"
+    ],
+    "versions": [
+        "0.8.0"
+    ],
+    "yanked_versions": {}
+}

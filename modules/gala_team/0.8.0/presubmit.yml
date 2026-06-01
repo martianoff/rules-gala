@@ -1,0 +1,17 @@
+matrix:
+  platform:
+    - debian11
+    - ubuntu2004
+    - macos
+    - windows
+  bazel:
+    - 7.x
+    - 8.x
+
+tasks:
+  verify_module:
+    name: "Verify gala_team module loads"
+    platform: ${{ platform }}
+    bazel: ${{ bazel }}
+    build_targets:
+      - "@gala_team//..."
