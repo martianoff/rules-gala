@@ -1,0 +1,5 @@
+package mixedgopkg
+
+import . "martianoff/gala/collection_immutable"
+
+func Sizes(xs Array[int]): Int = xs.Size()
