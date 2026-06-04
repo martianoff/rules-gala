@@ -1,0 +1,16 @@
+{
+    "homepage": "https://github.com/martianoff/rules-gala",
+    "maintainers": [
+        {
+            "github": "martianoff",
+            "name": "Maksim Martianov"
+        }
+    ],
+    "repository": [
+        "github:martianoff/rules-gala"
+    ],
+    "versions": [
+        "0.1.0"
+    ],
+    "yanked_versions": {}
+}
