@@ -98,8 +98,46 @@ For every GALA import in a rule's sources:
 | `# gazelle:gala_stdlib_prefix <path>` | `martianoff/gala` | Import namespace of the GALA standard library. |
 | `# gazelle:gala_stdlib_repo <name>` | `gala` | Bazel external repo for out-of-repo stdlib imports. |
 | `# gazelle:gala_implicit_dep <paths…>` | `martianoff/gala/std martianoff/gala/test` | Space-separated import paths the macros inject automatically (excluded from `deps`). `none` clears the set. |
+| `# gazelle:gala_generation <on\|off>` | `on` | When `off`, the extension generates **no** GALA rules in this directory (inherited by subdirectories). Hands the subtree to manual wiring. Falsey spellings: `off`, `disabled`, `false`, `none`, `0`, `no`. |
 
 Flags `-gala_prefix` and `-gala_helper` mirror the first two directives.
+
+## Consumer setup — opting trees out
+
+The extension only knows how to generate the standard `gala_library` /
+`gala_binary` / `gala_test` shape. Some directories are hand-curated and the
+extension must **not** touch them; mark each with the right directive:
+
+- **Curated example / test fixtures** — trees of hand-authored `gala_exec_test`
+  (with `expected=` / singular `src=`) or deliberate `importpath`s, and
+  golden test-data (`.gala`/`.txt`) pairs. Put `# gazelle:gala_generation off`
+  in the subtree root's `BUILD.bazel`. Without it, gazelle re-flows `src`→`srcs`,
+  strips bespoke deps, and mints a spurious package-wide `gala_binary`.
+
+- **Mixed GALA/Go packages** — a package whose `.gala` is transpiled to
+  `.gen.go` (`gala_bootstrap_transpile`) and bundled with hand-written `.go`
+  into one `go_library`. The extension already skips emitting a `gala_library`
+  when it sees a hand-written `.go` (see *Mixed GALA/Go packages* above), but
+  the `go_library`'s hand-authored `deps` reference generated sources gazelle
+  can't see — so also keep the **Go** language from re-resolving them, e.g.
+  `# gazelle:exclude **/*.gen.go` or `# gazelle:gala_generation off` plus a Go
+  directive, or hand-maintain the package and exclude it entirely.
+
+- **Nested Bazel modules** (a subdirectory with its own `MODULE.bazel`) — add
+  the directory to the **repo-root `.bazelignore`** so gazelle does not descend
+  into and rewrite another module's BUILD files. This is gazelle's standard
+  mechanism and applies to every language, not just GALA.
+
+- **Anything gazelle should ignore wholesale** — `# gazelle:exclude <path>`
+  (core directive) drops a file or directory from *all* languages.
+
+- **Line endings** — commit a `.gitattributes` with `* text=auto eol=lf`.
+  A Windows checkout (`autocrlf=true`) otherwise rewrites stored-LF BUILD files
+  to CRLF, producing perpetual churn in gazelle's output.
+
+- **Helper version** — the `gala` helper on `PATH` must support
+  `gala imports --json`. An older binary fails every package with
+  `--json unknown flag`; rebuild it or point `-gala_helper` at a current one.
 
 ## Helper contract
 

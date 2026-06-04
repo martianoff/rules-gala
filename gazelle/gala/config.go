@@ -27,6 +27,16 @@ const (
 	// gala_* macros inject automatically and which must NOT be emitted in
 	// "deps". Space-separated list; default is the std and test packages.
 	galaImplicitDepDirective = "gala_implicit_dep"
+	// galaGenerationDirective toggles whether the extension generates and
+	// manages GALA rules in a directory (and, inherited, its subtree). Set to
+	// a falsey value (off / disabled / false / none) to hand the directory to
+	// manual wiring: the extension emits no rules there, so gazelle never
+	// merges onto or re-resolves the deps of hand-authored GALA rules. Use it
+	// for bespoke trees the extension cannot model — curated example/test
+	// fixtures (gala_exec_test with `expected=`/`src=`), golden test-data
+	// pairs, and mixed GALA/Go packages whose go_library bundles generated
+	// `.gen.go` the helper can't see. Default is on.
+	galaGenerationDirective = "gala_generation"
 )
 
 const (
@@ -50,6 +60,10 @@ type galaConfig struct {
 	// ImplicitDeps maps import paths injected by the gala_* macros. Imports in
 	// this set are skipped when computing "deps".
 	ImplicitDeps map[string]bool
+	// Generate reports whether the extension should generate/manage GALA rules
+	// in this directory. False (via `# gazelle:gala_generation off`) leaves the
+	// directory to manual wiring. Inherited by subdirectories.
+	Generate bool
 }
 
 func newGalaConfig() *galaConfig {
@@ -62,6 +76,7 @@ func newGalaConfig() *galaConfig {
 			defaultStdlibPrefix + "/std":  true,
 			defaultStdlibPrefix + "/test": true,
 		},
+		Generate: true,
 	}
 }
 
@@ -106,6 +121,19 @@ func (*galaLang) KnownDirectives() []string {
 		galaStdlibPrefixDirective,
 		galaStdlibRepoDirective,
 		galaImplicitDepDirective,
+		galaGenerationDirective,
+	}
+}
+
+// generationEnabled parses a gala_generation directive value. Anything falsey
+// (off / disabled / false / none / 0, case-insensitive) turns generation off;
+// every other value (including empty) leaves it on.
+func generationEnabled(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "off", "disabled", "false", "none", "0", "no":
+		return false
+	default:
+		return true
 	}
 }
 
@@ -142,6 +170,8 @@ func (*galaLang) Configure(c *config.Config, rel string, f *rule.File) {
 					gc.ImplicitDeps[dep] = true
 				}
 			}
+		case galaGenerationDirective:
+			gc.Generate = generationEnabled(value)
 		}
 	}
 }
