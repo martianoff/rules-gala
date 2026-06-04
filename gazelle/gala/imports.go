@@ -3,7 +3,10 @@ package gala
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 )
 
 // rawImport mirrors one entry of the "imports" array emitted by the helper.
@@ -34,10 +37,33 @@ type fileInfo struct {
 // avoiding any dependency on an installed "gala" binary.
 type importRunner func(helper, dir string, files []string) ([]byte, error)
 
+// resolveHelper turns the configured helper into something execRunner can
+// launch. A bare command name (no path separator) is left untouched, so the
+// default "gala" is found on PATH. A *relative* path — typically a Bazel
+// `$(execpath //cmd/gala:gala)` such as "bazel-out/.../gala", passed via
+// `-gala_helper` or `# gazelle:gala_helper` — is resolved against
+// BUILD_WORKSPACE_DIRECTORY, the workspace root that `bazel run //:gazelle`
+// exports. This lets a consumer drive the helper from a bazel-built gala
+// binary (the gala toolchain's output) instead of whatever `gala` happens to
+// be on PATH. The resolution is required because execRunner sets a per-package
+// cmd.Dir, against which a bare relative path would not resolve.
+func resolveHelper(helper string) string {
+	if !strings.ContainsAny(helper, `/\`) {
+		return helper
+	}
+	if filepath.IsAbs(helper) {
+		return helper
+	}
+	if ws := os.Getenv("BUILD_WORKSPACE_DIRECTORY"); ws != "" {
+		return filepath.Join(ws, helper)
+	}
+	return helper
+}
+
 // execRunner is the production importRunner: it shells out to the helper.
 func execRunner(helper, dir string, files []string) ([]byte, error) {
 	args := append([]string{"imports", "--json"}, files...)
-	cmd := exec.Command(helper, args...)
+	cmd := exec.Command(resolveHelper(helper), args...)
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {

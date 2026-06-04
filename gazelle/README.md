@@ -135,9 +135,27 @@ extension must **not** touch them; mark each with the right directive:
   A Windows checkout (`autocrlf=true`) otherwise rewrites stored-LF BUILD files
   to CRLF, producing perpetual churn in gazelle's output.
 
-- **Helper version** — the `gala` helper on `PATH` must support
-  `gala imports --json`. An older binary fails every package with
-  `--json unknown flag`; rebuild it or point `-gala_helper` at a current one.
+- **Helper version** — the `gala` helper must support `gala imports --json`.
+  An older binary fails every package with `--json unknown flag`.
+
+  Rather than depend on whatever `gala` is on `PATH`, drive the helper from a
+  bazel-built binary (the gala toolchain's output) so the version always
+  matches the tree. Pass its `$(execpath)` to the `gazelle` rule and add it to
+  `data`:
+
+  ```starlark
+  gazelle(
+      name = "gazelle",
+      gazelle = ":gazelle_bin",
+      extra_args = ["-gala_helper=$(execpath //cmd/gala:gala)"],
+      data = ["//cmd/gala:gala"],
+  )
+  ```
+
+  A relative `-gala_helper` like this is resolved against
+  `BUILD_WORKSPACE_DIRECTORY` (which `bazel run //:gazelle` exports), so it
+  points at the freshly built binary via the `bazel-out` convenience symlink.
+  Requires `gala_gazelle` ≥ 0.1.5.
 
 ## Helper contract
 
