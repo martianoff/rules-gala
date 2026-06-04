@@ -10,7 +10,8 @@
         "github:martianoff/gala"
     ],
     "versions": [
-        "0.51.0"
+        "0.51.0",
+        "0.52.0"
     ],
     "yanked_versions": {}
 }
