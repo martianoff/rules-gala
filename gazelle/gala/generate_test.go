@@ -233,6 +233,33 @@ func TestGenerateSkipsMixedGoPackage(t *testing.T) {
 	}
 }
 
+// `# gazelle:gala_generation off` must suppress all rule generation for the
+// directory, so gazelle leaves any hand-authored GALA rules untouched.
+func TestGenerateDisabledByDirective(t *testing.T) {
+	gl := &galaLang{runner: fakeRunner}
+	c := testConfig()
+	getGalaConfig(c).Generate = false
+	res := gl.GenerateRules(genArgs(c, "regexlike", []string{"regex.gala", "regex_test.gala"}))
+	if len(res.Gen) != 0 {
+		t.Fatalf("gala_generation off should emit no rules, got %v", ruleKinds(res.Gen))
+	}
+}
+
+// generationEnabled treats the documented falsey spellings as "off" and every
+// other value (including empty / unknown) as "on".
+func TestGenerationEnabled(t *testing.T) {
+	for _, off := range []string{"off", "OFF", "Disabled", "false", "none", "0", "no"} {
+		if generationEnabled(off) {
+			t.Errorf("generationEnabled(%q) = true, want false", off)
+		}
+	}
+	for _, on := range []string{"", "auto", "on", "true", "anything"} {
+		if !generationEnabled(on) {
+			t.Errorf("generationEnabled(%q) = false, want true", on)
+		}
+	}
+}
+
 func TestHasHandwrittenGo(t *testing.T) {
 	cases := []struct {
 		name  string

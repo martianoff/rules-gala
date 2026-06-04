@@ -33,6 +33,14 @@ type galaImports struct {
 func (gl *galaLang) GenerateRules(args language.GenerateArgs) language.GenerateResult {
 	gc := getGalaConfig(args.Config)
 
+	// `# gazelle:gala_generation off` hands this directory (and, inherited, its
+	// subtree) to manual wiring. Emitting nothing means gazelle never merges
+	// onto or re-resolves the deps of any hand-authored GALA rules here, so a
+	// curated/mixed package is left exactly as written.
+	if !gc.Generate {
+		return language.GenerateResult{}
+	}
+
 	var galaFiles []string
 	for _, f := range args.RegularFiles {
 		if strings.HasSuffix(f, ".gala") {
