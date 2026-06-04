@@ -1,0 +1,24 @@
+# Normalize all text to LF in the working tree, regardless of a
+# contributor's core.autocrlf setting. Without this, a Windows checkout
+# (autocrlf=true) rewrites stored-LF files to CRLF on disk, producing
+# endless "LF will be replaced by CRLF" churn and spurious gazelle/gofmt
+# diffs. Registry MODULE.bazel files must also stay byte-identical to the
+# tarballs they mirror, which are LF.
+* text=auto eol=lf
+
+# Explicit, so the intent survives even if the glob rules change.
+*.go    text eol=lf
+*.gala  text eol=lf
+*.bazel text eol=lf
+*.bzl   text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
+*.yml   text eol=lf
+*.mod   text eol=lf
+*.sum   text eol=lf
+
+# Binary assets must never be normalized.
+*.png binary
+*.jpg binary
+*.gz  binary
+*.tar binary
