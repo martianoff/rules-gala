@@ -2,6 +2,7 @@ package gala
 
 import (
 	"encoding/json"
+	"flag"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/bazelbuild/bazel-gazelle/config"
 	"github.com/bazelbuild/bazel-gazelle/language"
+	"github.com/bazelbuild/bazel-gazelle/resolve"
 	"github.com/bazelbuild/bazel-gazelle/rule"
 )
 
@@ -113,6 +115,10 @@ func fakeRunner(helper, dir string, files []string) ([]byte, error) {
 func testConfig() *config.Config {
 	c := config.New()
 	c.Exts[languageName] = newGalaConfig()
+	// Initialize gazelle's resolve config (Resolve consults # gazelle:resolve
+	// overrides via FindRuleWithOverride, which needs it). Production sets this
+	// up automatically.
+	(&resolve.Configurer{}).RegisterFlags(flag.NewFlagSet("test", flag.ContinueOnError), "", c)
 	return c
 }
 
