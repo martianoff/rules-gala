@@ -160,6 +160,9 @@ func (gl *galaLang) GenerateRules(args language.GenerateArgs) language.GenerateR
 		r := rule.NewRule("gala_test", name+"_test")
 		r.SetAttr("srcs", internalTests)
 		r.SetAttr("pkg", libPkg)
+		// Full importpath so the internal lib never self-collides when the
+		// package name matches a Go stdlib package (e.g. runtime, io).
+		r.SetAttr("importpath", joinImportPath(gc.Prefix, args.Rel))
 		r.SetAttr("lib_srcs", srcFiles)
 		imps := mergeSortedUnique(collectImports(internalTests, infos), collectImports(srcFiles, infos))
 		if len(goSrcs) > 0 {

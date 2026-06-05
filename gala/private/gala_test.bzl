@@ -64,7 +64,7 @@ _test_gen_rule = rule(
 
 # ---- public macro ---------------------------------------------------------
 
-def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], lib_srcs = [], lib_go_srcs = [], **kwargs):
+def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], lib_srcs = [], lib_go_srcs = [], importpath = "", **kwargs):
     """GALA test rule — discovers and runs `Test*` functions.
 
     Test functions must:
@@ -94,6 +94,11 @@ def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], l
             the transpiled lib_srcs and made available during transpilation for
             type inference, so an internal test can reach symbols defined in the
             library's .go files.
+        importpath: Import path for the internal test's library (defaults to
+            `pkg`). Set this to the library's full import path when `pkg` would
+            otherwise collide with a Go standard-library package name (e.g. a
+            GALA package named `runtime` or `io`) — a same-name importpath makes
+            the package's own `import "runtime"` look like a self-import cycle.
         **kwargs: Forwarded to the underlying go_binary / go_test.
     """
 
@@ -191,7 +196,7 @@ def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], l
                 name = lib_name,
                 srcs = transpiled_lib_srcs + lib_go_srcs + embed,
                 deps = final_deps,
-                importpath = pkg,
+                importpath = importpath if importpath else pkg,
             )
             test_embed = [":" + lib_name]
         else:

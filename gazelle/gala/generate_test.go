@@ -305,6 +305,10 @@ func TestGenerateInternalTest(t *testing.T) {
 	if got := test.AttrString("pkg"); got != "internalpkg" {
 		t.Errorf("pkg = %q, want internalpkg", got)
 	}
+	// Full importpath (not just pkg) so a stdlib-named package wouldn't self-collide.
+	if got := test.AttrString("importpath"); got != "martianoff/gala/internalpkg" {
+		t.Errorf("importpath = %q, want martianoff/gala/internalpkg", got)
+	}
 	// Both internal test files are bundled (so cross-file helpers resolve).
 	if got := attrStrings(test, "srcs"); !reflect.DeepEqual(got, []string{"internal_lib2_test.gala", "internal_lib_test.gala"}) {
 		t.Errorf("srcs = %v, want both internal test files", got)
