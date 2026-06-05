@@ -76,6 +76,11 @@ var fakeImports = map[string]rawFile{
 		Package: "internalpkg",
 		Imports: []rawImport{{Path: "martianoff/gala/test", Dot: true}},
 	},
+	"internal_lib2_test.gala": {
+		File:    "internal_lib2_test.gala",
+		Package: "internalpkg",
+		Imports: []rawImport{{Path: "martianoff/gala/test", Dot: true}},
+	},
 	"lib_test.gala": {
 		File:    "lib_test.gala",
 		Package: "main",
@@ -268,27 +273,36 @@ func TestGenerateMixedGoPackage(t *testing.T) {
 	}
 }
 
-// An internal (white-box) test — declaring the same package as the library —
-// gets pkg + lib_srcs and inherits the library's imports.
+// Internal (white-box) tests — declaring the same package as the library — are
+// bundled into ONE gala_test named "<dir>_test" with pkg + lib_srcs (so they
+// share helpers across files) and inherit the library's imports.
 func TestGenerateInternalTest(t *testing.T) {
 	gl := &galaLang{runner: fakeRunner}
 	c := testConfig()
 	res := gl.GenerateRules(genArgs(c, "internalpkg",
-		[]string{"internal_lib.gala", "internal_lib_test.gala"}))
+		[]string{"internal_lib.gala", "internal_lib_test.gala", "internal_lib2_test.gala"}))
 
-	var test *rule.Rule
+	var tests []*rule.Rule
 	var testImps []string
 	for i, r := range res.Gen {
 		if r.Kind() == "gala_test" {
-			test = r
+			tests = append(tests, r)
 			testImps = res.Imports[i].(*galaImports).imports
 		}
 	}
-	if test == nil {
-		t.Fatalf("no gala_test generated: %v", ruleKinds(res.Gen))
+	if len(tests) != 1 {
+		t.Fatalf("want exactly 1 bundled internal gala_test, got %v", ruleKinds(res.Gen))
+	}
+	test := tests[0]
+	if test.Name() != "internalpkg_test" {
+		t.Errorf("name = %q, want internalpkg_test", test.Name())
 	}
 	if got := test.AttrString("pkg"); got != "internalpkg" {
 		t.Errorf("pkg = %q, want internalpkg", got)
+	}
+	// Both internal test files are bundled (so cross-file helpers resolve).
+	if got := attrStrings(test, "srcs"); !reflect.DeepEqual(got, []string{"internal_lib2_test.gala", "internal_lib_test.gala"}) {
+		t.Errorf("srcs = %v, want both internal test files", got)
 	}
 	if got := attrStrings(test, "lib_srcs"); !reflect.DeepEqual(got, []string{"internal_lib.gala"}) {
 		t.Errorf("lib_srcs = %v, want [internal_lib.gala]", got)

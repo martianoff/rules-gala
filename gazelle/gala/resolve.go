@@ -7,10 +7,16 @@ import (
 
 	"github.com/bazelbuild/bazel-gazelle/config"
 	"github.com/bazelbuild/bazel-gazelle/label"
+	golang "github.com/bazelbuild/bazel-gazelle/language/go"
 	"github.com/bazelbuild/bazel-gazelle/repo"
 	"github.com/bazelbuild/bazel-gazelle/resolve"
 	"github.com/bazelbuild/bazel-gazelle/rule"
 )
+
+// goLangExtKey is the config.Exts key gazelle-go stores its config under. We
+// only delegate to gazelle-go's resolver when that config is present, i.e. when
+// the composite (NewLanguage) wired the Go half in — never for standalone GALA.
+const goLangExtKey = "go"
 
 // Imports implements resolve.Resolver. A gala_library is indexed by its
 // importpath so other rules can resolve imports to it. gala_binary and
@@ -56,6 +62,13 @@ func (*galaLang) Resolve(
 		}
 		lbl, ok := resolveImport(gc, ix, imp, from)
 		if !ok {
+			// Not a GALA import. In a mixed package the go_srcs reference Go
+			// stdlib / in-repo Go / third-party Go; defer to gazelle-go's
+			// resolver (available only in composite mode). Go stdlib resolves
+			// to no dep; everything else to its label.
+			if l, gok := resolveGoImport(c, ix, rc, imp, from); gok {
+				deps[l] = true
+			}
 			continue
 		}
 		deps[lbl] = true
@@ -96,6 +109,23 @@ func resolveImport(gc *galaConfig, ix *resolve.RuleIndex, imp string, from label
 
 	// Go stdlib / external Go imports: no GALA dependency.
 	return "", false
+}
+
+// resolveGoImport maps a non-GALA import to its Bazel label using gazelle-go's
+// resolver, but only when the Go half has been configured (composite mode). It
+// returns ok=false for Go stdlib (no dep needed) and when the Go config is
+// absent (standalone GALA use), so a mixed package's third-party Go deps (e.g.
+// @com_github_google_uuid) are resolved without the GALA half re-implementing
+// Go resolution.
+func resolveGoImport(c *config.Config, ix *resolve.RuleIndex, rc *repo.RemoteCache, imp string, from label.Label) (string, bool) {
+	if _, ok := c.Exts[goLangExtKey]; !ok {
+		return "", false
+	}
+	l, err := golang.ResolveGo(c, ix, rc, imp, from)
+	if err != nil || l == label.NoLabel {
+		return "", false
+	}
+	return l.Rel(from.Repo, from.Pkg).String(), true
 }
 
 // relUnder returns the path of imp relative to ns ("" when imp == ns) and

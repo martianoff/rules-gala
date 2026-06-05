@@ -18,18 +18,21 @@ This is a standalone Bazel module. In your `MODULE.bazel`:
 bazel_dep(name = "gala_gazelle", version = "0.1.0")
 ```
 
-Then build a `gazelle_binary` that bundles the GALA language alongside any
-others you use, and an invocation target, in a `BUILD.bazel`:
+`@gala_gazelle//gala` is a **composite language**: it embeds gazelle's Go
+language and routes per directory — any directory containing a `.gala` file is
+managed by the GALA half (pure-GALA and mixed GALA/Go via `go_srcs`), every
+other directory by the embedded Go language. So a single language handles GALA,
+mixed, **and** pure-Go packages with no cross-language target-name collision.
+
+Build a `gazelle_binary` with **just** the GALA composite, plus an invocation
+target, in a `BUILD.bazel`:
 
 ```starlark
 load("@gazelle//:def.bzl", "gazelle", "gazelle_binary")
 
 gazelle_binary(
     name = "gazelle_bin",
-    languages = [
-        "@gazelle//language/go",      # optional: keep Go support
-        "@gala_gazelle//gala",        # GALA support
-    ],
+    languages = ["@gala_gazelle//gala"],   # handles GALA + Go
 )
 
 # gazelle:gala_prefix github.com/you/project
@@ -38,6 +41,9 @@ gazelle(
     gazelle = ":gazelle_bin",
 )
 ```
+
+Do **not** also list `@gazelle//language/go` — it would double-claim the `.go`
+in mixed packages and collide. The composite already includes it.
 
 Run it with `bazel run //:gazelle`.
 
@@ -88,12 +94,22 @@ are dropped — add those by hand or with `# keep`). `_test.go` files and the
 exception: `gala_binary` has no `go_srcs`, so the extension leaves it to manual
 wiring.
 
-**Keep the Go language off these `.go`.** If your `gazelle_binary` also lists
-`@gazelle//language/go`, it will independently emit a `go_library` for the same
-`.go`, colliding with this `gala_library` on the directory-base name. Exclude the
-mixed package from the Go language so only `gala_library` owns it — e.g. put the
-package behind `# gazelle:exclude` for a wholly hand-managed dir, or run a
-GALA-only `gazelle_binary` over the GALA subtree.
+No collision arises as long as you use only `@gala_gazelle//gala` (the composite
+owns the whole directory and never lets the embedded Go language re-claim the
+`.go`). The `.go` files' imports — Go stdlib, in-repo, and third-party — are
+resolved via the embedded Go resolver, so a mixed package's external Go deps
+(e.g. `@com_github_google_uuid`) land in `deps` automatically.
+
+### Known limitations
+
+- **Internal tests of a mixed package** can't be generated: `gala_test` has
+  `lib_srcs` (GALA only) but no way to bundle the library's hand-written `.go`,
+  so a white-box test of a mixed package would see undefined `.go` symbols.
+  The extension logs and skips these; wire them by hand (or run via `gala test`).
+- **Cross-module GALA libraries** (a `gala_library` published by *another* Bazel
+  module, imported under a path outside `gala_prefix`/`gala_stdlib_prefix`) are
+  not auto-resolved to the right `gala_deps` label. Pin them with
+  `# gazelle:resolve gala <import-path> <label>`.
 
 ## Dependency resolution
 
