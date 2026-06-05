@@ -59,17 +59,19 @@ func (gl *galaLang) GenerateRules(args language.GenerateArgs) language.GenerateR
 		infos = map[string]fileInfo{}
 	}
 
-	// Hand-written Go sources (not .gen.go transpiler outputs, not _test.go)
-	// share the package with the .gala sources. rules_gala's gala_library
-	// compiles them alongside the transpiled .gala via its `go_srcs` attribute,
-	// so a mixed GALA/Go package is still one gala_library — fold the .go in
-	// rather than dropping it.
+	// Additional Go sources — any .go in the package that gala did NOT produce
+	// (i.e. not a .gen.go transpiler output) and isn't a _test.go — share the
+	// package with the .gala sources. Whether a human wrote them or another tool
+	// generated them, they must compile alongside the transpiled .gala.
+	// rules_gala's gala_library does this via its `go_srcs` attribute, so a
+	// mixed GALA/Go package is still one gala_library — fold the .go in rather
+	// than dropping it.
 	//
 	// NOTE: the Go gazelle language, if enabled in the same gazelle_binary, also
 	// emits a go_library for these .go files, which would collide with this
 	// gala_library on the directory-base name. Keep the Go language off
 	// mixed-package .go (see README "Mixed GALA/Go packages").
-	goSrcs := handwrittenGoFiles(args.RegularFiles)
+	goSrcs := extraGoSrcs(args.RegularFiles)
 
 	// Partition into library/binary sources and framework-test files. A
 	// *_test.gala file that declares `package main` with a `main()` is a
@@ -92,8 +94,8 @@ func (gl *galaLang) GenerateRules(args language.GenerateArgs) language.GenerateR
 	var res language.GenerateResult
 	name := dirName(args.Rel)
 
-	// Non-test sources: gala_library (with any hand-written .go folded into
-	// go_srcs), or gala_binary for a runnable main.
+	// Non-test sources: gala_library (with any extra .go folded into go_srcs),
+	// or gala_binary for a runnable main.
 	if len(srcFiles) > 0 {
 		sort.Strings(srcFiles)
 		isMain := detectMain(args.Dir, srcFiles, infos)
@@ -115,8 +117,8 @@ func (gl *galaLang) GenerateRules(args language.GenerateArgs) language.GenerateR
 				r.SetAttr("importpath", importPath)
 				r.SetAttr("visibility", []string{"//visibility:public"})
 				if len(goSrcs) > 0 {
-					// Mixed package: bundle the hand-written .go and add their
-					// Go imports so deps cover both source kinds.
+					// Mixed package: bundle the extra .go and add their Go
+					// imports so deps cover both source kinds.
 					r.SetAttr("go_srcs", goSrcs)
 					imps = mergeSortedUnique(imps, goFileImports(args.Dir, goSrcs))
 				}
@@ -148,11 +150,12 @@ func (gl *galaLang) GenerateRules(args language.GenerateArgs) language.GenerateR
 	return res
 }
 
-// handwrittenGoFiles returns the sorted hand-written Go sources in a directory:
-// every .go file that is not a .gen.go transpiler output and not a _test.go
-// (Go test files belong to a go_test, not the gala_library). A non-empty result
-// marks a mixed GALA/Go package whose .go are folded into gala_library.go_srcs.
-func handwrittenGoFiles(files []string) []string {
+// extraGoSrcs returns the sorted Go sources in a directory that gala did not
+// generate: every .go file that is not a .gen.go transpiler output and not a
+// _test.go (Go test files belong to a go_test, not the gala_library). These may
+// be hand-written or produced by another tool; either way they share the
+// package and are folded into gala_library.go_srcs for a mixed GALA/Go package.
+func extraGoSrcs(files []string) []string {
 	var out []string
 	for _, f := range files {
 		if strings.HasSuffix(f, ".go") && !strings.HasSuffix(f, ".gen.go") && !strings.HasSuffix(f, "_test.go") {

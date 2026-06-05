@@ -215,9 +215,9 @@ func TestGenerateSkipsBenchmarkMainTest(t *testing.T) {
 func TestGenerateMixedGoPackage(t *testing.T) {
 	gl := &galaLang{runner: fakeRunner}
 	c := testConfig()
-	// A package mixing .gala with a hand-written native.go. lib.gen.go is a
-	// transpiler output (excluded from go_srcs); lib_test.gala is a framework
-	// test (still its own gala_test).
+	// A package mixing .gala with an extra native.go (gala didn't generate it).
+	// lib.gen.go is a transpiler output (excluded from go_srcs); lib_test.gala
+	// is a framework test (still its own gala_test).
 	res := gl.GenerateRules(genArgs(c, "mixedgopkg",
 		[]string{"lib.gala", "native.go", "lib.gen.go", "lib_test.gala"}))
 
@@ -237,8 +237,8 @@ func TestGenerateMixedGoPackage(t *testing.T) {
 	if lib == nil {
 		t.Fatalf("no gala_library generated for mixed package: %v", ruleKinds(res.Gen))
 	}
-	// The .gala is compiled (not dropped) and the hand-written .go is folded in
-	// via go_srcs — the transpiler output (.gen.go) is NOT.
+	// The .gala is compiled (not dropped) and the extra .go is folded in via
+	// go_srcs — the transpiler output (.gen.go) is NOT.
 	if got := attrStrings(lib, "srcs"); !reflect.DeepEqual(got, []string{"lib.gala"}) {
 		t.Errorf("lib srcs = %v, want [lib.gala]", got)
 	}
@@ -285,9 +285,9 @@ func TestGenerationEnabled(t *testing.T) {
 	}
 }
 
-// handwrittenGoFiles returns only the hand-written .go (not .gen.go outputs,
+// extraGoSrcs returns the Go sources gala didn't generate (not .gen.go outputs,
 // not _test.go) that belong in a gala_library's go_srcs.
-func TestHandwrittenGoFiles(t *testing.T) {
+func TestExtraGoSrcs(t *testing.T) {
 	cases := []struct {
 		name  string
 		files []string
@@ -295,14 +295,14 @@ func TestHandwrittenGoFiles(t *testing.T) {
 	}{
 		{"only gala", []string{"a.gala", "b.gala"}, nil},
 		{"gen go only", []string{"a.gala", "a.gen.go"}, nil},
-		{"handwritten go", []string{"a.gala", "native.go"}, []string{"native.go"}},
+		{"extra go", []string{"a.gala", "native.go"}, []string{"native.go"}},
 		{"excludes go tests", []string{"a.gala", "native.go", "native_test.go"}, []string{"native.go"}},
 		{"sorted", []string{"z.go", "a.go"}, []string{"a.go", "z.go"}},
 	}
 	for _, tc := range cases {
-		got := handwrittenGoFiles(tc.files)
+		got := extraGoSrcs(tc.files)
 		if !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("%s: handwrittenGoFiles(%v) = %v, want %v", tc.name, tc.files, got, tc.want)
+			t.Errorf("%s: extraGoSrcs(%v) = %v, want %v", tc.name, tc.files, got, tc.want)
 		}
 	}
 }

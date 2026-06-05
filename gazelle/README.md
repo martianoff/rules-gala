@@ -60,16 +60,17 @@ Per directory containing `.gala` files:
 
 ### Mixed GALA/Go packages
 
-A package may place hand-written Go sources (`.go`, excluding the generated
-`.gen.go` outputs) **alongside** `.gala` files. `rules_gala`'s `gala_library`
+A package may place additional Go sources (`.go` that gala did **not** generate
+— i.e. not the `.gen.go` transpiler outputs) **alongside** `.gala` files,
+whether hand-written or produced by another tool. `rules_gala`'s `gala_library`
 compiles both kinds into one `go_library` via its `go_srcs` attribute, so the
-extension folds the hand-written `.go` into a single `gala_library`:
+extension folds those `.go` into a single `gala_library`:
 
 ```starlark
 gala_library(
     name = "widgets",
     srcs = ["widgets.gala"],          # transpiled to .gen.go
-    go_srcs = ["native.go"],          # hand-written, compiled in the same package
+    go_srcs = ["native.go"],          # extra Go, compiled in the same package
     importpath = "example.com/m/widgets",
     deps = [...],                     # union of the .gala and .go imports
 )
