@@ -131,36 +131,55 @@ func (gl *galaLang) GenerateRules(args language.GenerateArgs) language.GenerateR
 		}
 	}
 
-	// Test sources: one gala_test per *_test.gala file, named after the file
-	// stem, carrying that file's own resolved deps. This matches the repo
-	// convention (one test target per file) and avoids name collisions with
-	// existing per-file rules when regenerating.
+	// Tests come in two shapes:
 	//
-	// A test that declares the SAME package as the library (an internal/
-	// white-box test) compiles against the library's sources and must embed
-	// them: gala_test takes `pkg = <package>` + `lib_srcs = <lib .gala>`, and
-	// its deps are the union of the test's and the library's imports (the lib
-	// sources are compiled into the test binary). A standalone test (typically
-	// `package main`) keeps the plain form.
+	//   - Internal (white-box) tests declare the SAME package as the library.
+	//     They reach the library's unexported symbols AND frequently share
+	//     helpers across files, so they compile together as ONE gala_test for
+	//     the package (named "<dir>_test") with pkg = <package> + lib_srcs =
+	//     <lib .gala>; deps are the union of the tests' and the library's
+	//     imports (the lib sources are compiled into the test binary).
+	//   - Standalone tests (typically package main) are independent, so each
+	//     becomes its own gala_test named after the file stem.
 	libPkg := libPackageOf(srcFiles, infos)
 	sort.Strings(testFiles)
+	var internalTests, standaloneTests []string
 	for _, tf := range testFiles {
-		testName := strings.TrimSuffix(tf, ".gala")
-		r := rule.NewRule("gala_test", testName)
-		r.SetAttr("srcs", []string{tf})
-		imps := collectImports([]string{tf}, infos)
 		tfPkg := ""
 		if info, ok := infos[tf]; ok {
 			tfPkg = info.Package
 		}
 		if libPkg != "" && libPkg != "main" && tfPkg == libPkg {
+			internalTests = append(internalTests, tf)
+		} else {
+			standaloneTests = append(standaloneTests, tf)
+		}
+	}
+
+	if len(internalTests) > 0 {
+		if len(goSrcs) > 0 {
+			// Internal test of a mixed GALA/Go package: gala_test's lib_srcs
+			// bundles only .gala, so the library's hand-written .go symbols
+			// would be undefined. rules_gala has no attribute to also bundle the
+			// .go, so leave these to manual wiring rather than emit broken rules.
+			log.Printf("gazelle(gala): %s: skipping internal tests %v — gala_test cannot bundle a mixed package's .go sources; wire them by hand", args.Rel, internalTests)
+		} else {
+			r := rule.NewRule("gala_test", name+"_test")
+			r.SetAttr("srcs", internalTests)
 			r.SetAttr("pkg", libPkg)
 			r.SetAttr("lib_srcs", srcFiles)
-			imps = mergeSortedUnique(imps, collectImports(srcFiles, infos))
+			imps := mergeSortedUnique(collectImports(internalTests, infos), collectImports(srcFiles, infos))
+			res.Gen = append(res.Gen, r)
+			res.Imports = append(res.Imports, &galaImports{imports: imps, self: ""})
 		}
+	}
+
+	for _, tf := range standaloneTests {
+		r := rule.NewRule("gala_test", strings.TrimSuffix(tf, ".gala"))
+		r.SetAttr("srcs", []string{tf})
 		res.Gen = append(res.Gen, r)
 		res.Imports = append(res.Imports, &galaImports{
-			imports: imps,
+			imports: collectImports([]string{tf}, infos),
 			self:    "",
 		})
 	}

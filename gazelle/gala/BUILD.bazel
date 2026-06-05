@@ -3,6 +3,7 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "gala",
     srcs = [
+        "composite.go",
         "config.go",
         "generate.go",
         "imports.go",
@@ -15,6 +16,7 @@ go_library(
         "@gazelle//config",
         "@gazelle//label",
         "@gazelle//language",
+        "@gazelle//language/go",
         "@gazelle//repo",
         "@gazelle//resolve",
         "@gazelle//rule",

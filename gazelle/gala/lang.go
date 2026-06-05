@@ -29,9 +29,10 @@ type galaLang struct {
 	runner importRunner
 }
 
-// NewLanguage returns a new GALA Gazelle language extension. This is the entry
-// point referenced by gazelle_binary's generated main.
-func NewLanguage() language.Language {
+// newGalaLang constructs the GALA-only half of the extension. The public
+// NewLanguage entry point (composite.go) wraps it together with the embedded
+// gazelle-go language.
+func newGalaLang() *galaLang {
 	return &galaLang{runner: execRunner}
 }
 
