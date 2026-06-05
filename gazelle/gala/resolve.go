@@ -52,12 +52,22 @@ func (*galaLang) Resolve(
 	gc := getGalaConfig(c)
 
 	deps := map[string]bool{}
+	galaDeps := map[string]bool{}
 	for _, imp := range gi.imports {
 		if imp == gi.self {
 			continue
 		}
 		if gc.ImplicitDeps[imp] {
 			// Injected automatically by the gala_* macros (std, test).
+			continue
+		}
+		// An explicit `# gazelle:resolve gala <imp> <label>` names a GALA
+		// library that the transpiler can't find on its search path — i.e. a
+		// library from ANOTHER Bazel module (the in-repo and @gala stdlib libs
+		// resolve automatically below). Such a dep must go in gala_deps so its
+		// sources are available at transpile time, not just deps.
+		if l, ok := resolve.FindRuleWithOverride(c, resolve.ImportSpec{Lang: languageName, Imp: imp}, languageName); ok {
+			galaDeps[l.Rel(from.Repo, from.Pkg).String()] = true
 			continue
 		}
 		lbl, ok := resolveImport(gc, ix, imp, from)
@@ -74,16 +84,23 @@ func (*galaLang) Resolve(
 		deps[lbl] = true
 	}
 
-	if len(deps) == 0 {
-		r.DelAttr("deps")
+	setSortedAttr(r, "deps", deps)
+	setSortedAttr(r, "gala_deps", galaDeps)
+}
+
+// setSortedAttr writes the sorted keys of set to the named attr, or deletes the
+// attr when the set is empty.
+func setSortedAttr(r *rule.Rule, attr string, set map[string]bool) {
+	if len(set) == 0 {
+		r.DelAttr(attr)
 		return
 	}
-	sorted := make([]string, 0, len(deps))
-	for d := range deps {
+	sorted := make([]string, 0, len(set))
+	for d := range set {
 		sorted = append(sorted, d)
 	}
 	sort.Strings(sorted)
-	r.SetAttr("deps", sorted)
+	r.SetAttr(attr, sorted)
 }
 
 // resolveImport maps a single GALA import path to a Bazel label string. It
