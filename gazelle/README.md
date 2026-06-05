@@ -15,7 +15,7 @@ by the rules_python Gazelle plugin.
 This is a standalone Bazel module. In your `MODULE.bazel`:
 
 ```starlark
-bazel_dep(name = "gala_gazelle", version = "0.1.0")
+bazel_dep(name = "gala_gazelle", version = "0.2.2")
 ```
 
 `@gala_gazelle//gala` is a **composite language**: it embeds gazelle's Go
@@ -59,7 +59,11 @@ Per directory containing `.gala` files:
   the configured prefix plus the directory's repo-relative path, and
   `visibility = ["//visibility:public"]`.
 - **`gala_binary`** instead of a library when a source declares `package main`
-  and defines a zero-argument `main()`.
+  and defines a zero-argument `main()`. The target — library or binary — is
+  named after the directory's base name, so put each `main` in its own
+  `cmd/<binary>/main.gala` (Go convention) to get a `<binary>` target.
+  `x_defs` and `visibility` are **not** synthesized; once added by hand they are
+  preserved across regeneration (they are not in the rule's mergeable attrs).
 - **`gala_test`** for each `*_test.gala` file. A test that declares the **same
   package as the library** (an internal / white-box test) is generated with
   `pkg = "<package>"` and `lib_srcs = [<the library's .gala>]` so it compiles
@@ -100,28 +104,50 @@ owns the whole directory and never lets the embedded Go language re-claim the
 resolved via the embedded Go resolver, so a mixed package's external Go deps
 (e.g. `@com_github_google_uuid`) land in `deps` automatically.
 
+Internal (white-box) tests of a mixed package are supported: the extension
+bundles the library's hand-written `.go` into the `gala_test` via `lib_go_srcs`
+(alongside `lib_srcs` for the `.gala`), so the test sees the package's `.go`
+symbols. Requires `rules_gala` ≥ 0.1.2.
+
 ### Known limitations
 
-- **Internal tests of a mixed package** can't be generated: `gala_test` has
-  `lib_srcs` (GALA only) but no way to bundle the library's hand-written `.go`,
-  so a white-box test of a mixed package would see undefined `.go` symbols.
-  The extension logs and skips these; wire them by hand (or run via `gala test`).
-- **Cross-module GALA libraries** (a `gala_library` published by *another* Bazel
-  module, imported under a path outside `gala_prefix`/`gala_stdlib_prefix`) are
-  not auto-resolved to the right `gala_deps` label. Pin them with
-  `# gazelle:resolve gala <import-path> <label>`.
+- **Transpiler-surfaced transitive deps.** The extension resolves `deps` from
+  the **source-level** imports the helper reports. GALA's transpiler can emit a
+  reference to a *transitive* package the source never imports — e.g. a test
+  that dot-imports package `ui` calls a `ui` function returning a `session.*`
+  type, so the generated `.go` imports `…/session` although no `.gala` names it.
+  Gazelle can't see this, so the dep is missing. Keep it by hand with a
+  `# keep` comment, which survives regeneration:
+
+  ```starlark
+  deps = [
+      "//app/session",  # keep: transpiler surfaces session types via the ui dot-import
+      ...
+  ],
+  ```
+
+- **Mixed `package main`.** `gala_binary` has no `go_srcs`, so a `package main`
+  directory that also holds hand-written `.go` can't be folded into one rule.
+  The extension logs and skips it; wire it by hand.
 
 ## Dependency resolution
 
 For every GALA import in a rule's sources:
 
-- **In-repo packages** (under the `gala_prefix`) resolve to in-repo labels —
-  preferring an indexed `gala_library` with a matching `importpath`, otherwise
-  `//<relpath>`.
+- **Overridden imports** (`# gazelle:resolve gala <import-path> <label>`) take
+  precedence and are written to **`gala_deps`**, not `deps`. This is how a
+  cross-module GALA library is wired: its sources must be on the transpiler's
+  search path, which `gala_deps` provides and `deps` (link-only) does not.
+  Requires `gala_gazelle` ≥ 0.2.2.
+- **In-repo packages** (under the `gala_prefix`) resolve to in-repo labels in
+  `deps` — preferring an indexed `gala_library` with a matching `importpath`,
+  otherwise `//<relpath>`.
 - **GALA stdlib / external packages** (under `gala_stdlib_prefix`, default
   `martianoff/gala`) resolve to the matching in-repo package if one exists, and
   otherwise to `@<gala_stdlib_repo>//<relpath>` (default repo `gala`).
-- **Go stdlib and other non-GALA imports** (`fmt`, `strings`, …) are skipped.
+- **Go stdlib and other non-GALA imports** (`fmt`, `strings`, …) are skipped,
+  except in a mixed package, where the `.go` files' third-party / in-repo Go
+  imports are resolved to `deps` via the embedded Go resolver.
 - **Macro-injected deps** (`martianoff/gala/std`, `martianoff/gala/test`) are
   skipped — the `gala_*` macros add them automatically, so emitting them in
   `deps` would be redundant.
@@ -151,14 +177,12 @@ extension must **not** touch them; mark each with the right directive:
   in the subtree root's `BUILD.bazel`. Without it, gazelle re-flows `src`→`srcs`,
   strips bespoke deps, and mints a spurious package-wide `gala_binary`.
 
-- **Mixed GALA/Go packages** — a package whose `.gala` is transpiled to
-  `.gen.go` (`gala_bootstrap_transpile`) and bundled with hand-written `.go`
-  into one `go_library`. The extension already skips emitting a `gala_library`
-  when it sees a hand-written `.go` (see *Mixed GALA/Go packages* above), but
-  the `go_library`'s hand-authored `deps` reference generated sources gazelle
-  can't see — so also keep the **Go** language from re-resolving them, e.g.
-  `# gazelle:exclude **/*.gen.go` or `# gazelle:gala_generation off` plus a Go
-  directive, or hand-maintain the package and exclude it entirely.
+- **Mixed GALA/Go packages** — these are generated **automatically**: the
+  composite folds the hand-written `.go` into the `gala_library`'s `go_srcs` and
+  resolves both source kinds' imports (see *Mixed GALA/Go packages* above), so
+  no opt-out is needed in the common case. Opt out only if you want to
+  hand-maintain a particular mixed package — `# gazelle:gala_generation off` in
+  that directory hands the whole package (GALA and Go) to manual wiring.
 
 - **Nested Bazel modules** (a subdirectory with its own `MODULE.bazel`) — add
   the directory to the **repo-root `.bazelignore`** so gazelle does not descend
