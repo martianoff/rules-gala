@@ -48,8 +48,9 @@ in mixed packages and collide. The composite already includes it.
 Run it with `bazel run //:gazelle`.
 
 The helper binary must be discoverable. By default the extension shells out to
-`gala` on `PATH`; override with the `-gala_helper` flag or the
-`# gazelle:gala_helper` directive (see below).
+`gala` on `PATH`; for reproducible generation, drive it from the registered GALA
+toolchain with `gala_imports_helper` instead (see *Helper version* below), or
+override with the `-gala_helper` flag / `# gazelle:gala_helper` directive.
 
 ## What it generates
 
@@ -197,26 +198,38 @@ extension must **not** touch them; mark each with the right directive:
   to CRLF, producing perpetual churn in gazelle's output.
 
 - **Helper version** — the `gala` helper must support `gala imports --json`.
-  An older binary fails every package with `--json unknown flag`.
+  An older binary fails every package with `--json unknown flag`. The default
+  (`gala` on `PATH`) leaves BUILD generation at the mercy of whatever is
+  installed, which is neither reproducible nor guaranteed to match the gala the
+  toolchain transpiles with.
 
-  Rather than depend on whatever `gala` is on `PATH`, drive the helper from a
-  bazel-built binary (the gala toolchain's output) so the version always
-  matches the tree. Pass its `$(execpath)` to the `gazelle` rule and add it to
-  `data`:
+  **Recommended — drive the helper from the registered GALA toolchain.**
+  `rules_gala` ships `gala_imports_helper`, which re-exports the toolchain's
+  gala binary as a runnable. The helper that extracts imports is then *the same
+  gala the toolchain builds with*, so generation is reproducible and never
+  drifts from the gala version:
 
   ```starlark
+  load("@rules_gala//gala:defs.bzl", "gala_imports_helper")
+
+  gala_imports_helper(name = "gala_imports")
+
   gazelle(
       name = "gazelle",
       gazelle = ":gazelle_bin",
-      extra_args = ["-gala_helper=$(execpath //cmd/gala:gala)"],
-      data = ["//cmd/gala:gala"],
+      data = [":gala_imports"],
+      extra_args = ["-gala_helper=$(execpath :gala_imports)"],
   )
   ```
 
-  A relative `-gala_helper` like this is resolved against
+  Requires `rules_gala` ≥ 0.1.3.
+
+  *Alternative* — pass any `$(execpath)` directly, e.g. a bazel-built
+  `//cmd/gala:gala`. A relative `-gala_helper` is resolved against
   `BUILD_WORKSPACE_DIRECTORY` (which `bazel run //:gazelle` exports), so it
-  points at the freshly built binary via the `bazel-out` convenience symlink.
-  Requires `gala_gazelle` ≥ 0.1.5.
+  points at the freshly built binary via the `bazel-out` convenience symlink
+  (requires `gala_gazelle` ≥ 0.1.5). Use this only if you are not using the
+  rules_gala toolchain.
 
 ## Helper contract
 
