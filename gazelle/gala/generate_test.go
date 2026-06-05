@@ -212,24 +212,49 @@ func TestGenerateSkipsBenchmarkMainTest(t *testing.T) {
 	}
 }
 
-func TestGenerateSkipsMixedGoPackage(t *testing.T) {
+func TestGenerateMixedGoPackage(t *testing.T) {
 	gl := &galaLang{runner: fakeRunner}
 	c := testConfig()
 	// A package mixing .gala with a hand-written native.go. lib.gen.go is a
-	// transpiler output that must be ignored by the mixed-package check.
+	// transpiler output (excluded from go_srcs); lib_test.gala is a framework
+	// test (still its own gala_test).
 	res := gl.GenerateRules(genArgs(c, "mixedgopkg",
 		[]string{"lib.gala", "native.go", "lib.gen.go", "lib_test.gala"}))
 
-	// No gala_library/gala_binary: a plain gala_library would drop native.go
-	// and collide with the go_library that bundles the .gen.go + .go sources.
-	for _, r := range res.Gen {
-		if r.Kind() == "gala_library" || r.Kind() == "gala_binary" {
-			t.Errorf("unexpected %s %q generated for a mixed GALA/Go package", r.Kind(), r.Name())
+	var lib, test *rule.Rule
+	var libImports []string
+	for i, r := range res.Gen {
+		switch r.Kind() {
+		case "gala_library":
+			lib = r
+			libImports = res.Imports[i].(*galaImports).imports
+		case "gala_test":
+			test = r
+		default:
+			t.Errorf("unexpected %s %q", r.Kind(), r.Name())
 		}
 	}
-	// The pure-GALA framework test is unaffected and still managed.
-	if len(res.Gen) != 1 || res.Gen[0].Kind() != "gala_test" || res.Gen[0].Name() != "lib_test" {
-		t.Fatalf("got %v, want exactly [gala_test:lib_test]", ruleKinds(res.Gen))
+	if lib == nil {
+		t.Fatalf("no gala_library generated for mixed package: %v", ruleKinds(res.Gen))
+	}
+	// The .gala is compiled (not dropped) and the hand-written .go is folded in
+	// via go_srcs — the transpiler output (.gen.go) is NOT.
+	if got := attrStrings(lib, "srcs"); !reflect.DeepEqual(got, []string{"lib.gala"}) {
+		t.Errorf("lib srcs = %v, want [lib.gala]", got)
+	}
+	if got := attrStrings(lib, "go_srcs"); !reflect.DeepEqual(got, []string{"native.go"}) {
+		t.Errorf("lib go_srcs = %v, want [native.go]", got)
+	}
+	if lib.AttrString("importpath") != "martianoff/gala/mixedgopkg" {
+		t.Errorf("importpath = %q", lib.AttrString("importpath"))
+	}
+	// The go_srcs' own imports join the dep payload (native.go imports go_interop).
+	if !contains(libImports, "martianoff/gala/go_interop") {
+		t.Errorf("lib imports missing native.go's go_interop dep: %v", libImports)
+	}
+	// The pure-GALA framework test is still its own rule.
+	if test == nil || test.Name() != "lib_test" {
+		t.Errorf("expected gala_test lib_test, got %v", ruleKinds(res.Gen))
 	}
 }
 
@@ -260,20 +285,24 @@ func TestGenerationEnabled(t *testing.T) {
 	}
 }
 
-func TestHasHandwrittenGo(t *testing.T) {
+// handwrittenGoFiles returns only the hand-written .go (not .gen.go outputs,
+// not _test.go) that belong in a gala_library's go_srcs.
+func TestHandwrittenGoFiles(t *testing.T) {
 	cases := []struct {
 		name  string
 		files []string
-		want  bool
+		want  []string
 	}{
-		{"only gala", []string{"a.gala", "b.gala"}, false},
-		{"gen go only", []string{"a.gala", "a.gen.go"}, false},
-		{"handwritten go", []string{"a.gala", "native.go"}, true},
-		{"handwritten test go", []string{"a.gala", "native_test.go"}, true},
+		{"only gala", []string{"a.gala", "b.gala"}, nil},
+		{"gen go only", []string{"a.gala", "a.gen.go"}, nil},
+		{"handwritten go", []string{"a.gala", "native.go"}, []string{"native.go"}},
+		{"excludes go tests", []string{"a.gala", "native.go", "native_test.go"}, []string{"native.go"}},
+		{"sorted", []string{"z.go", "a.go"}, []string{"a.go", "z.go"}},
 	}
 	for _, tc := range cases {
-		if got := hasHandwrittenGo(tc.files); got != tc.want {
-			t.Errorf("%s: hasHandwrittenGo(%v) = %v, want %v", tc.name, tc.files, got, tc.want)
+		got := handwrittenGoFiles(tc.files)
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%s: handwrittenGoFiles(%v) = %v, want %v", tc.name, tc.files, got, tc.want)
 		}
 	}
 }

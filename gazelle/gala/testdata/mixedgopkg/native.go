@@ -1,6 +1,13 @@
 package mixedgopkg
 
-// Native is a hand-written Go helper bundled into the same package as the
-// .gala sources. Its presence makes this a mixed GALA/Go package, which must
-// be wired via gala_bootstrap_transpile + go_library rather than gala_library.
-func Native() int { return 42 }
+import (
+	"fmt"
+
+	"martianoff/gala/go_interop"
+)
+
+// Native is a hand-written Go helper sharing the package with the .gala
+// sources. The extension folds it into the gala_library's go_srcs, and its
+// imports (the gala go_interop dep; the fmt stdlib dep is dropped by the
+// resolver) join the library's dep set.
+func Native() string { return fmt.Sprint(go_interop.Something) }

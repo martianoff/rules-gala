@@ -60,19 +60,34 @@ Per directory containing `.gala` files:
 
 ### Mixed GALA/Go packages
 
-A package that places hand-written Go sources (`.go`, not the generated
-`.gen.go` outputs) **alongside** `.gala` files cannot be expressed as a plain
-`gala_library`: rules_gala compiles it by transpiling each `.gala` to `.gen.go`
-(`gala_bootstrap_transpile`) and bundling the generated Go together with the
-hand-written `.go` in a single `go_library`. That composite wiring is outside
-what this extension generates.
+A package may place hand-written Go sources (`.go`, excluding the generated
+`.gen.go` outputs) **alongside** `.gala` files. `rules_gala`'s `gala_library`
+compiles both kinds into one `go_library` via its `go_srcs` attribute, so the
+extension folds the hand-written `.go` into a single `gala_library`:
 
-When the extension sees a hand-written `.go` file in a directory, it therefore
-**does not** emit a `gala_library`/`gala_binary` for that package (doing so would
-silently drop the `.go` sources and collide with the `go_library` on the same
-directory-base name). It logs that the package is mixed and leaves the library
-to manual wiring. Pure-GALA `*_test.gala` framework tests are unaffected and are
-still managed.
+```starlark
+gala_library(
+    name = "widgets",
+    srcs = ["widgets.gala"],          # transpiled to .gen.go
+    go_srcs = ["native.go"],          # hand-written, compiled in the same package
+    importpath = "example.com/m/widgets",
+    deps = [...],                     # union of the .gala and .go imports
+)
+```
+
+`deps` are resolved from the **union** of the `.gala` imports and the `.go`
+files' imports (Go stdlib and third-party Go imports the GALA resolver can't map
+are dropped — add those by hand or with `# keep`). `_test.go` files and the
+`.gen.go` outputs are never put in `go_srcs`. A mixed `package main` is the one
+exception: `gala_binary` has no `go_srcs`, so the extension leaves it to manual
+wiring.
+
+**Keep the Go language off these `.go`.** If your `gazelle_binary` also lists
+`@gazelle//language/go`, it will independently emit a `go_library` for the same
+`.go`, colliding with this `gala_library` on the directory-base name. Exclude the
+mixed package from the Go language so only `gala_library` owns it — e.g. put the
+package behind `# gazelle:exclude` for a wholly hand-managed dir, or run a
+GALA-only `gazelle_binary` over the GALA subtree.
 
 ## Dependency resolution
 

@@ -1,6 +1,8 @@
 package gala
 
 import (
+	"go/parser"
+	"go/token"
 	"log"
 	"os"
 	"path"
@@ -57,16 +59,17 @@ func (gl *galaLang) GenerateRules(args language.GenerateArgs) language.GenerateR
 		infos = map[string]fileInfo{}
 	}
 
-	// A package that mixes hand-written Go sources with .gala sources cannot be
-	// expressed as a plain gala_library. rules_gala compiles such packages by
-	// transpiling each .gala to .gen.go (gala_bootstrap_transpile) and bundling
-	// the generated Go together with the hand-written .go in a single
-	// go_library — a composite wiring this extension does not own. Emitting a
-	// gala_library here would silently drop the .go sources and shadow the
-	// go_library on the same directory-base name. So when a hand-written .go is
-	// present, leave the library/binary to manual wiring; the pure-GALA
-	// framework tests (*_test.gala) are unaffected and still managed.
-	mixed := hasHandwrittenGo(args.RegularFiles)
+	// Hand-written Go sources (not .gen.go transpiler outputs, not _test.go)
+	// share the package with the .gala sources. rules_gala's gala_library
+	// compiles them alongside the transpiled .gala via its `go_srcs` attribute,
+	// so a mixed GALA/Go package is still one gala_library — fold the .go in
+	// rather than dropping it.
+	//
+	// NOTE: the Go gazelle language, if enabled in the same gazelle_binary, also
+	// emits a go_library for these .go files, which would collide with this
+	// gala_library on the directory-base name. Keep the Go language off
+	// mixed-package .go (see README "Mixed GALA/Go packages").
+	goSrcs := handwrittenGoFiles(args.RegularFiles)
 
 	// Partition into library/binary sources and framework-test files. A
 	// *_test.gala file that declares `package main` with a `main()` is a
@@ -89,30 +92,41 @@ func (gl *galaLang) GenerateRules(args language.GenerateArgs) language.GenerateR
 	var res language.GenerateResult
 	name := dirName(args.Rel)
 
-	// Non-test sources: gala_library, or gala_binary for a runnable main.
-	if len(srcFiles) > 0 && mixed {
-		log.Printf("gazelle(gala): %s: mixed GALA/Go package (hand-written .go present); leaving the library to manual gala_bootstrap_transpile + go_library wiring, not generating a gala_library/gala_binary", args.Rel)
-	}
-	if len(srcFiles) > 0 && !mixed {
+	// Non-test sources: gala_library (with any hand-written .go folded into
+	// go_srcs), or gala_binary for a runnable main.
+	if len(srcFiles) > 0 {
 		sort.Strings(srcFiles)
 		isMain := detectMain(args.Dir, srcFiles, infos)
 		importPath := joinImportPath(gc.Prefix, args.Rel)
 
-		var r *rule.Rule
-		if isMain {
-			r = rule.NewRule("gala_binary", name)
-			r.SetAttr("srcs", srcFiles)
+		if isMain && len(goSrcs) > 0 {
+			// gala_binary has no go_srcs, so a mixed `package main` can't be
+			// folded into one rule — leave it to manual wiring.
+			log.Printf("gazelle(gala): %s: mixed GALA/Go `package main` (gala_binary has no go_srcs); leaving to manual wiring", args.Rel)
 		} else {
-			r = rule.NewRule("gala_library", name)
-			r.SetAttr("srcs", srcFiles)
-			r.SetAttr("importpath", importPath)
-			r.SetAttr("visibility", []string{"//visibility:public"})
+			imps := collectImports(srcFiles, infos)
+			var r *rule.Rule
+			if isMain {
+				r = rule.NewRule("gala_binary", name)
+				r.SetAttr("srcs", srcFiles)
+			} else {
+				r = rule.NewRule("gala_library", name)
+				r.SetAttr("srcs", srcFiles)
+				r.SetAttr("importpath", importPath)
+				r.SetAttr("visibility", []string{"//visibility:public"})
+				if len(goSrcs) > 0 {
+					// Mixed package: bundle the hand-written .go and add their
+					// Go imports so deps cover both source kinds.
+					r.SetAttr("go_srcs", goSrcs)
+					imps = mergeSortedUnique(imps, goFileImports(args.Dir, goSrcs))
+				}
+			}
+			res.Gen = append(res.Gen, r)
+			res.Imports = append(res.Imports, &galaImports{
+				imports: imps,
+				self:    importPath,
+			})
 		}
-		res.Gen = append(res.Gen, r)
-		res.Imports = append(res.Imports, &galaImports{
-			imports: collectImports(srcFiles, infos),
-			self:    importPath,
-		})
 	}
 
 	// Test sources: one gala_test per *_test.gala file, named after the file
@@ -134,16 +148,64 @@ func (gl *galaLang) GenerateRules(args language.GenerateArgs) language.GenerateR
 	return res
 }
 
-// hasHandwrittenGo reports whether the directory contains a hand-written Go
-// source — any .go file that is not a .gen.go transpiler output. Such a file
-// marks a mixed GALA/Go package (see GenerateRules).
-func hasHandwrittenGo(files []string) bool {
+// handwrittenGoFiles returns the sorted hand-written Go sources in a directory:
+// every .go file that is not a .gen.go transpiler output and not a _test.go
+// (Go test files belong to a go_test, not the gala_library). A non-empty result
+// marks a mixed GALA/Go package whose .go are folded into gala_library.go_srcs.
+func handwrittenGoFiles(files []string) []string {
+	var out []string
 	for _, f := range files {
-		if strings.HasSuffix(f, ".go") && !strings.HasSuffix(f, ".gen.go") {
-			return true
+		if strings.HasSuffix(f, ".go") && !strings.HasSuffix(f, ".gen.go") && !strings.HasSuffix(f, "_test.go") {
+			out = append(out, f)
 		}
 	}
-	return false
+	sort.Strings(out)
+	return out
+}
+
+// goFileImports returns the sorted, deduped import paths declared by the given
+// Go files (parsed imports-only). These feed dep resolution for a mixed
+// package's go_srcs alongside the .gala imports; non-GALA paths (Go stdlib,
+// third-party) are dropped later by the resolver.
+func goFileImports(dir string, files []string) []string {
+	set := map[string]bool{}
+	for _, f := range files {
+		fset := token.NewFileSet()
+		af, err := parser.ParseFile(fset, filepath.Join(dir, f), nil, parser.ImportsOnly)
+		if err != nil {
+			log.Printf("gazelle(gala): parsing %s for imports: %v", f, err)
+			continue
+		}
+		for _, spec := range af.Imports {
+			p := strings.Trim(spec.Path.Value, `"`)
+			if p != "" {
+				set[p] = true
+			}
+		}
+	}
+	out := make([]string, 0, len(set))
+	for p := range set {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// mergeSortedUnique returns the sorted union of two import-path slices.
+func mergeSortedUnique(a, b []string) []string {
+	set := map[string]bool{}
+	for _, x := range a {
+		set[x] = true
+	}
+	for _, x := range b {
+		set[x] = true
+	}
+	out := make([]string, 0, len(set))
+	for x := range set {
+		out = append(out, x)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // dirName returns the rule base name for a directory: the final path segment,

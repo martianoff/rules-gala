@@ -57,6 +57,7 @@ func (*galaLang) Kinds() map[string]rule.KindInfo {
 				"srcs":       true,
 				"src":        true,
 				"importpath": true,
+				"go_srcs":    true,
 			},
 			ResolveAttrs: depsResolvable,
 		},
