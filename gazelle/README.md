@@ -54,7 +54,12 @@ Per directory containing `.gala` files:
   `visibility = ["//visibility:public"]`.
 - **`gala_binary`** instead of a library when a source declares `package main`
   and defines a zero-argument `main()`.
-- **`gala_test`** for the directory's `*_test.gala` files.
+- **`gala_test`** for each `*_test.gala` file. A test that declares the **same
+  package as the library** (an internal / white-box test) is generated with
+  `pkg = "<package>"` and `lib_srcs = [<the library's .gala>]` so it compiles
+  against the library's sources, and its `deps` are the union of the test's and
+  the library's imports. A standalone test (e.g. `package main`) keeps the plain
+  `gala_test(srcs = [...])` form.
 
 `srcs` are sorted; `deps` are resolved from each file's GALA imports.
 

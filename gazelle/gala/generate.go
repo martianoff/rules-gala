@@ -135,14 +135,32 @@ func (gl *galaLang) GenerateRules(args language.GenerateArgs) language.GenerateR
 	// stem, carrying that file's own resolved deps. This matches the repo
 	// convention (one test target per file) and avoids name collisions with
 	// existing per-file rules when regenerating.
+	//
+	// A test that declares the SAME package as the library (an internal/
+	// white-box test) compiles against the library's sources and must embed
+	// them: gala_test takes `pkg = <package>` + `lib_srcs = <lib .gala>`, and
+	// its deps are the union of the test's and the library's imports (the lib
+	// sources are compiled into the test binary). A standalone test (typically
+	// `package main`) keeps the plain form.
+	libPkg := libPackageOf(srcFiles, infos)
 	sort.Strings(testFiles)
 	for _, tf := range testFiles {
 		testName := strings.TrimSuffix(tf, ".gala")
 		r := rule.NewRule("gala_test", testName)
 		r.SetAttr("srcs", []string{tf})
+		imps := collectImports([]string{tf}, infos)
+		tfPkg := ""
+		if info, ok := infos[tf]; ok {
+			tfPkg = info.Package
+		}
+		if libPkg != "" && libPkg != "main" && tfPkg == libPkg {
+			r.SetAttr("pkg", libPkg)
+			r.SetAttr("lib_srcs", srcFiles)
+			imps = mergeSortedUnique(imps, collectImports(srcFiles, infos))
+		}
 		res.Gen = append(res.Gen, r)
 		res.Imports = append(res.Imports, &galaImports{
-			imports: collectImports([]string{tf}, infos),
+			imports: imps,
 			self:    "",
 		})
 	}
@@ -209,6 +227,18 @@ func mergeSortedUnique(a, b []string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// libPackageOf returns the GALA package declared by the library's non-test
+// sources (they share one package), or "" if unknown. Used to detect internal
+// tests — those declaring the same package as the library.
+func libPackageOf(srcFiles []string, infos map[string]fileInfo) string {
+	for _, f := range srcFiles {
+		if info, ok := infos[f]; ok && info.Package != "" {
+			return info.Package
+		}
+	}
+	return ""
 }
 
 // dirName returns the rule base name for a directory: the final path segment,
