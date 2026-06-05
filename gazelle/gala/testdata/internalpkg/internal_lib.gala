@@ -1,0 +1,5 @@
+package internalpkg
+
+import . "martianoff/gala/collection_immutable"
+
+func Size(xs Array[int]): Int = xs.Size()

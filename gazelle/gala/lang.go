@@ -67,8 +67,10 @@ func (*galaLang) Kinds() map[string]rule.KindInfo {
 			ResolveAttrs:   depsResolvable,
 		},
 		"gala_test": {
-			NonEmptyAttrs:  map[string]bool{"srcs": true, "src": true},
-			MergeableAttrs: srcsMergeable,
+			NonEmptyAttrs: map[string]bool{"srcs": true, "src": true},
+			// pkg/lib_srcs are managed so internal (white-box) tests stay in
+			// sync as the library's sources change.
+			MergeableAttrs: map[string]bool{"srcs": true, "src": true, "pkg": true, "lib_srcs": true},
 			ResolveAttrs:   depsResolvable,
 		},
 		"gala_exec_test": {

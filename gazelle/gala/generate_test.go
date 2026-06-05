@@ -66,6 +66,16 @@ var fakeImports = map[string]rawFile{
 		Package: "mixedgopkg",
 		Imports: []rawImport{{Path: "martianoff/gala/collection_immutable", Dot: true}},
 	},
+	"internal_lib.gala": {
+		File:    "internal_lib.gala",
+		Package: "internalpkg",
+		Imports: []rawImport{{Path: "martianoff/gala/collection_immutable", Dot: true}},
+	},
+	"internal_lib_test.gala": {
+		File:    "internal_lib_test.gala",
+		Package: "internalpkg",
+		Imports: []rawImport{{Path: "martianoff/gala/test", Dot: true}},
+	},
 	"lib_test.gala": {
 		File:    "lib_test.gala",
 		Package: "main",
@@ -255,6 +265,55 @@ func TestGenerateMixedGoPackage(t *testing.T) {
 	// The pure-GALA framework test is still its own rule.
 	if test == nil || test.Name() != "lib_test" {
 		t.Errorf("expected gala_test lib_test, got %v", ruleKinds(res.Gen))
+	}
+}
+
+// An internal (white-box) test — declaring the same package as the library —
+// gets pkg + lib_srcs and inherits the library's imports.
+func TestGenerateInternalTest(t *testing.T) {
+	gl := &galaLang{runner: fakeRunner}
+	c := testConfig()
+	res := gl.GenerateRules(genArgs(c, "internalpkg",
+		[]string{"internal_lib.gala", "internal_lib_test.gala"}))
+
+	var test *rule.Rule
+	var testImps []string
+	for i, r := range res.Gen {
+		if r.Kind() == "gala_test" {
+			test = r
+			testImps = res.Imports[i].(*galaImports).imports
+		}
+	}
+	if test == nil {
+		t.Fatalf("no gala_test generated: %v", ruleKinds(res.Gen))
+	}
+	if got := test.AttrString("pkg"); got != "internalpkg" {
+		t.Errorf("pkg = %q, want internalpkg", got)
+	}
+	if got := attrStrings(test, "lib_srcs"); !reflect.DeepEqual(got, []string{"internal_lib.gala"}) {
+		t.Errorf("lib_srcs = %v, want [internal_lib.gala]", got)
+	}
+	// The lib's imports (collection_immutable) are inherited because lib_srcs
+	// are compiled into the test.
+	if !contains(testImps, "martianoff/gala/collection_immutable") {
+		t.Errorf("internal test should inherit lib imports: %v", testImps)
+	}
+}
+
+// A standalone test (package main) keeps the plain form — no pkg/lib_srcs.
+func TestGenerateStandaloneTestNoPkg(t *testing.T) {
+	gl := &galaLang{runner: fakeRunner}
+	c := testConfig()
+	res := gl.GenerateRules(genArgs(c, "regexlike", []string{"regex.gala", "regex_test.gala"}))
+	for _, r := range res.Gen {
+		if r.Kind() == "gala_test" {
+			if r.AttrString("pkg") != "" {
+				t.Errorf("standalone test got pkg=%q, want none", r.AttrString("pkg"))
+			}
+			if len(attrStrings(r, "lib_srcs")) != 0 {
+				t.Errorf("standalone test got lib_srcs, want none")
+			}
+		}
 	}
 }
 

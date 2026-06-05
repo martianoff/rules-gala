@@ -1,0 +1,5 @@
+package internalpkg
+
+import . "martianoff/gala/test"
+
+func testSize(): Unit = assertEqual(0, Size(EmptyArray[int]()))
