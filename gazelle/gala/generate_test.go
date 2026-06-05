@@ -66,6 +66,11 @@ var fakeImports = map[string]rawFile{
 		Package: "mixedgopkg",
 		Imports: []rawImport{{Path: "martianoff/gala/collection_immutable", Dot: true}},
 	},
+	"mixed_internal_test.gala": {
+		File:    "mixed_internal_test.gala",
+		Package: "mixedgopkg",
+		Imports: []rawImport{{Path: "martianoff/gala/test", Dot: true}},
+	},
 	"internal_lib.gala": {
 		File:    "internal_lib.gala",
 		Package: "internalpkg",
@@ -328,6 +333,40 @@ func TestGenerateStandaloneTestNoPkg(t *testing.T) {
 				t.Errorf("standalone test got lib_srcs, want none")
 			}
 		}
+	}
+}
+
+// An internal test of a MIXED package gets lib_go_srcs (the library's .go) so
+// the test can reach symbols defined there, and the .go imports join its deps.
+func TestGenerateMixedInternalTest(t *testing.T) {
+	gl := &galaLang{runner: fakeRunner}
+	c := testConfig()
+	res := gl.GenerateRules(genArgs(c, "mixedgopkg",
+		[]string{"lib.gala", "native.go", "lib.gen.go", "mixed_internal_test.gala"}))
+
+	var test *rule.Rule
+	var imps []string
+	for i, r := range res.Gen {
+		if r.Kind() == "gala_test" {
+			test = r
+			imps = res.Imports[i].(*galaImports).imports
+		}
+	}
+	if test == nil {
+		t.Fatalf("no gala_test generated: %v", ruleKinds(res.Gen))
+	}
+	if got := test.AttrString("pkg"); got != "mixedgopkg" {
+		t.Errorf("pkg = %q", got)
+	}
+	if got := attrStrings(test, "lib_srcs"); !reflect.DeepEqual(got, []string{"lib.gala"}) {
+		t.Errorf("lib_srcs = %v, want [lib.gala]", got)
+	}
+	if got := attrStrings(test, "lib_go_srcs"); !reflect.DeepEqual(got, []string{"native.go"}) {
+		t.Errorf("lib_go_srcs = %v, want [native.go]", got)
+	}
+	// native.go imports go_interop → joins the test deps.
+	if !contains(imps, "martianoff/gala/go_interop") {
+		t.Errorf("mixed internal test should inherit native.go imports: %v", imps)
 	}
 }
 

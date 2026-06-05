@@ -64,7 +64,7 @@ _test_gen_rule = rule(
 
 # ---- public macro ---------------------------------------------------------
 
-def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], lib_srcs = [], **kwargs):
+def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], lib_srcs = [], lib_go_srcs = [], **kwargs):
     """GALA test rule — discovers and runs `Test*` functions.
 
     Test functions must:
@@ -89,6 +89,11 @@ def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], l
         embed: Go source labels for internal tests.
         lib_srcs: GALA library sources to bundle into the test binary
             (alternative to defining a separate gala_library).
+        lib_go_srcs: Hand-written .go sources of the library under test (a
+            mixed GALA/Go package). They are compiled into the test alongside
+            the transpiled lib_srcs and made available during transpilation for
+            type inference, so an internal test can reach symbols defined in the
+            library's .go files.
         **kwargs: Forwarded to the underlying go_binary / go_test.
     """
 
@@ -105,6 +110,11 @@ def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], l
     # package under test *is* the test framework itself.
     test_extra_srcs = [_TEST_GALA_SOURCES] if pkg != "test" else []
 
+    # The library's hand-written .go (a mixed GALA/Go package) must be visible
+    # during transpilation so the transpiler can resolve symbols/types they
+    # define, mirroring how gala_library forwards go_srcs to its transpile.
+    transpile_extra_srcs = test_extra_srcs + lib_go_srcs
+
     # Step 2: transpile lib_srcs (if any), then test srcs.
     transpiled_lib_srcs = [name + "_lib_" + str(i) + ".gen.go" for i in range(len(lib_srcs))]
     if len(lib_srcs) > 1:
@@ -112,7 +122,7 @@ def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], l
             name = name + "_lib_transpile",
             srcs = lib_srcs,
             outs = transpiled_lib_srcs,
-            extra_srcs = test_extra_srcs,
+            extra_srcs = transpile_extra_srcs,
             gala_deps = gala_deps,
         )
     elif len(lib_srcs) == 1:
@@ -120,7 +130,7 @@ def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], l
             name = name + "_lib_transpile_0",
             src = lib_srcs[0],
             out = transpiled_lib_srcs[0],
-            extra_srcs = test_extra_srcs,
+            extra_srcs = transpile_extra_srcs,
             gala_deps = gala_deps,
         )
     else:
@@ -139,7 +149,7 @@ def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], l
             src = src,
             out = transpiled_srcs[i],
             package_files = siblings,
-            extra_srcs = test_extra_srcs,
+            extra_srcs = transpile_extra_srcs,
             gala_deps = gala_deps,
         )
 
@@ -154,7 +164,7 @@ def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], l
     if pkg == "main":
         # External test: package main → wrap a go_binary as the test.
         binary_name = name + "_bin"
-        all_srcs = transpiled_lib_srcs + transpiled_srcs + [main_go_src] + embed
+        all_srcs = transpiled_lib_srcs + lib_go_srcs + transpiled_srcs + [main_go_src] + embed
 
         go_binary(
             name = binary_name,
@@ -176,10 +186,10 @@ def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], l
         # go_library + go_test with embed; avoids the go_binary
         # package-main constraint.
         lib_name = name + "_lib"
-        if transpiled_lib_srcs or embed:
+        if transpiled_lib_srcs or lib_go_srcs or embed:
             go_library(
                 name = lib_name,
-                srcs = transpiled_lib_srcs + embed,
+                srcs = transpiled_lib_srcs + lib_go_srcs + embed,
                 deps = final_deps,
                 importpath = pkg,
             )

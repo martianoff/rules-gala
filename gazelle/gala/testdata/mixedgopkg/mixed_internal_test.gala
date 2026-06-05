@@ -1,0 +1,5 @@
+package mixedgopkg
+
+import . "martianoff/gala/test"
+
+func testNative(): Unit = assertEqual("", Native())

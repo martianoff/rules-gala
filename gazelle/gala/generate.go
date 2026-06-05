@@ -157,21 +157,21 @@ func (gl *galaLang) GenerateRules(args language.GenerateArgs) language.GenerateR
 	}
 
 	if len(internalTests) > 0 {
+		r := rule.NewRule("gala_test", name+"_test")
+		r.SetAttr("srcs", internalTests)
+		r.SetAttr("pkg", libPkg)
+		r.SetAttr("lib_srcs", srcFiles)
+		imps := mergeSortedUnique(collectImports(internalTests, infos), collectImports(srcFiles, infos))
 		if len(goSrcs) > 0 {
-			// Internal test of a mixed GALA/Go package: gala_test's lib_srcs
-			// bundles only .gala, so the library's hand-written .go symbols
-			// would be undefined. rules_gala has no attribute to also bundle the
-			// .go, so leave these to manual wiring rather than emit broken rules.
-			log.Printf("gazelle(gala): %s: skipping internal tests %v — gala_test cannot bundle a mixed package's .go sources; wire them by hand", args.Rel, internalTests)
-		} else {
-			r := rule.NewRule("gala_test", name+"_test")
-			r.SetAttr("srcs", internalTests)
-			r.SetAttr("pkg", libPkg)
-			r.SetAttr("lib_srcs", srcFiles)
-			imps := mergeSortedUnique(collectImports(internalTests, infos), collectImports(srcFiles, infos))
-			res.Gen = append(res.Gen, r)
-			res.Imports = append(res.Imports, &galaImports{imports: imps, self: ""})
+			// Mixed package: the library's hand-written .go must compile into
+			// the internal test too (its symbols are referenced), and their Go
+			// imports join the test's deps. Requires rules_gala's gala_test
+			// lib_go_srcs (>= 0.1.2).
+			r.SetAttr("lib_go_srcs", goSrcs)
+			imps = mergeSortedUnique(imps, goFileImports(args.Dir, goSrcs))
 		}
+		res.Gen = append(res.Gen, r)
+		res.Imports = append(res.Imports, &galaImports{imports: imps, self: ""})
 	}
 
 	for _, tf := range standaloneTests {
