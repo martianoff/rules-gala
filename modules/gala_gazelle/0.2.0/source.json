@@ -1,5 +1,5 @@
 {
     "url": "https://github.com/martianoff/rules-gala/archive/refs/tags/0.2.0.tar.gz",
-    "integrity": "",
+    "integrity": "sha256-qN93WQLPhc0OJMFPIDIDrMH5gyFTuKcPt+72zaJN/gE=",
     "strip_prefix": "rules-gala-0.2.0/gazelle"
 }
