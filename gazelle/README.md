@@ -15,7 +15,7 @@ by the rules_python Gazelle plugin.
 This is a standalone Bazel module. In your `MODULE.bazel`:
 
 ```starlark
-bazel_dep(name = "gala_gazelle", version = "0.2.2")
+bazel_dep(name = "gala_gazelle", version = "0.2.4", dev_dependency = True)
 ```
 
 `@gala_gazelle//gala` is a **composite language**: it embeds gazelle's Go
@@ -24,8 +24,31 @@ managed by the GALA half (pure-GALA and mixed GALA/Go via `go_srcs`), every
 other directory by the embedded Go language. So a single language handles GALA,
 mixed, **and** pure-Go packages with no cross-language target-name collision.
 
-Build a `gazelle_binary` with **just** the GALA composite, plus an invocation
-target, in a `BUILD.bazel`:
+### Recommended: the `gala_gazelle` macro
+
+One call wires a composite `gazelle_binary` **and** a toolchain-driven import
+helper, so BUILD generation is reproducible — the gala that extracts imports is
+the same gala the registered toolchain transpiles with:
+
+```starlark
+load("@gala_gazelle//gala:defs.bzl", "gala_gazelle")
+
+# gazelle:gala_prefix github.com/you/project
+gala_gazelle(name = "gazelle")
+```
+
+Run it with `bazel run //:gazelle`. This creates `//:gazelle_bin`,
+`//:gazelle_gala_imports` (the toolchain helper), and `//:gazelle`.
+
+Pin a specific gala for the helper with `gala_helper = "//cmd/gala:gala"` (any
+gala binary label); by default the **registered GALA toolchain** is used.
+Requires `gala_gazelle` ≥ 0.2.4 (which depends on `rules_gala` ≥ 0.1.3 for
+`gala_imports_helper`).
+
+### Manual wiring
+
+If you need full control, build the `gazelle_binary` and `gazelle` rule
+yourself:
 
 ```starlark
 load("@gazelle//:def.bzl", "gazelle", "gazelle_binary")
@@ -49,8 +72,9 @@ Run it with `bazel run //:gazelle`.
 
 The helper binary must be discoverable. By default the extension shells out to
 `gala` on `PATH`; for reproducible generation, drive it from the registered GALA
-toolchain with `gala_imports_helper` instead (see *Helper version* below), or
-override with the `-gala_helper` flag / `# gazelle:gala_helper` directive.
+toolchain with `gala_imports_helper` (what the macro does — see *Helper version*
+below), or override with the `-gala_helper` flag / `# gazelle:gala_helper`
+directive.
 
 ## What it generates
 

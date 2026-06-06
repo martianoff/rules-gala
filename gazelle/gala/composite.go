@@ -21,6 +21,10 @@ import (
 	"strings"
 )
 
+// goName is the language name gazelle-go tags its ImportSpecs and index lookups
+// with. It matches goLangExtKey ("go") but names the resolve-language concept.
+const goName = "go"
+
 // compositeLang routes between the GALA half and an embedded gazelle-go.
 type compositeLang struct {
 	gala   *galaLang
@@ -37,6 +41,7 @@ var (
 	_ config.Configurer            = (*compositeLang)(nil)
 	_ language.ModuleAwareLanguage = (*compositeLang)(nil)
 	_ language.LifecycleManager    = (*compositeLang)(nil)
+	_ resolve.CrossResolver        = (*compositeLang)(nil)
 )
 
 // isGalaKind reports whether a rule kind is owned by the GALA half.
@@ -142,6 +147,25 @@ func (c *compositeLang) Resolve(cfg *config.Config, ix *resolve.RuleIndex, rc *r
 		return
 	}
 	c.goLang.Resolve(cfg, ix, rc, r, imports, from)
+}
+
+// CrossResolve bridges the composite's single-language indexing to gazelle-go's
+// resolver. Gazelle records every rule under THIS language's Name ("gala"),
+// because there is only one registered language (see resolve/index.go: the
+// record's Lang is mrslv(rule).Name()). gazelle-go's resolver, however, looks up
+// the index filtering by record-language == "go", so it never sees in-repo
+// go_library targets and would drop every cross-package Go dep. When that lookup
+// misses, gazelle consults registered CrossResolvers; re-query the index under
+// this language's own name so the go_library record is found.
+//
+// GALA imports need no bridging: they are indexed and looked up under the same
+// "gala" name, and have prefix/stdlib fallbacks besides. FindRulesByImport does
+// not re-enter CrossResolvers, so there is no recursion.
+func (c *compositeLang) CrossResolve(cfg *config.Config, ix *resolve.RuleIndex, imp resolve.ImportSpec, lang string) []resolve.FindResult {
+	if imp.Lang != goName {
+		return nil
+	}
+	return ix.FindRulesByImport(imp, c.Name())
 }
 
 // --- Lifecycle / Finishable: guarded delegation to the Go half, which relies
