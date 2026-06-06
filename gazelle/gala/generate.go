@@ -92,7 +92,7 @@ func (gl *galaLang) GenerateRules(args language.GenerateArgs) language.GenerateR
 	}
 
 	var res language.GenerateResult
-	name := dirName(args.Rel)
+	name := packageName(args.Rel, gc.Prefix)
 
 	// Non-test sources: gala_library (with any extra .go folded into go_srcs),
 	// or gala_binary for a runnable main.
@@ -270,6 +270,23 @@ func dirName(rel string) string {
 		return "root"
 	}
 	return path.Base(rel)
+}
+
+// packageName is the Bazel target name for the library/binary/test of a
+// package. For a subdirectory it is the directory's base name. For the ROOT
+// package (rel == ""), there is no directory name, so derive it from the base
+// of the importpath prefix — normalizing hyphens to underscores for a
+// conventional target name (e.g. github.com/acme/gala-tui -> "gala_tui",
+// matching the @gala_tui//:gala_tui label consumers use). Falls back to "root"
+// when no prefix is configured.
+func packageName(rel, prefix string) string {
+	if rel != "" {
+		return path.Base(rel)
+	}
+	if prefix != "" {
+		return strings.ReplaceAll(path.Base(prefix), "-", "_")
+	}
+	return "root"
 }
 
 // joinImportPath builds the importpath for a directory from the prefix and the
