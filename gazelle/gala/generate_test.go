@@ -492,3 +492,22 @@ func TestGeneratePrefixDirective(t *testing.T) {
 		t.Errorf("importpath = %q, want github.com/me/app/mathlike", got)
 	}
 }
+
+// The root package (rel == "") has no directory name, so its target is named
+// from the importpath prefix base with hyphens normalized to underscores — so a
+// module like github.com/acme/gala-tui yields //:gala_tui, the label consumers
+// already depend on, not //:root.
+func TestPackageName_RootFromPrefix(t *testing.T) {
+	cases := []struct{ rel, prefix, want string }{
+		{"app/cli", "github.com/x/proj", "cli"},
+		{"state", "github.com/martianoff/gala-tui", "state"},
+		{"", "github.com/martianoff/gala-tui", "gala_tui"},
+		{"", "github.com/x/proj", "proj"},
+		{"", "", "root"},
+	}
+	for _, c := range cases {
+		if got := packageName(c.rel, c.prefix); got != c.want {
+			t.Errorf("packageName(%q, %q) = %q, want %q", c.rel, c.prefix, got, c.want)
+		}
+	}
+}

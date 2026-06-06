@@ -7,7 +7,7 @@ that lists "@gala_gazelle//gala" among its `languages`. See README.md.
 
 module(
     name = "gala_gazelle",
-    version = "0.2.4",
+    version = "0.2.5",
 )
 
 bazel_dep(name = "gazelle", version = "0.47.0")
