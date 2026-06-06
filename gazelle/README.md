@@ -45,23 +45,45 @@ gala binary label); by default the **registered GALA toolchain** is used.
 Requires `gala_gazelle` ≥ 0.2.4 (which depends on `rules_gala` ≥ 0.1.3 for
 `gala_imports_helper`).
 
+> **Caveat — dev_dependency + consumer-loaded BUILD.** The macro adds
+> `load("@gala_gazelle//gala:defs.bzl", …)` to the BUILD file you call it from.
+> If you list `gala_gazelle` as a `dev_dependency` (recommended) **and** that
+> same BUILD file is loaded when your module is consumed as a *non-root*
+> dependency — e.g. a module that ships a GALA toolchain referencing
+> `//:all_gala_sources` from its root BUILD — the load fails for the consumer
+> (`No repository visible as '@gala_gazelle'`), because dev-dependencies are
+> stripped for non-root modules. In that case use the [manual wiring](#manual-wiring)
+> instead: it references `@gala_gazelle` only as a string label in
+> `gazelle_binary.languages` (resolved when the gazelle binary is built, not at
+> BUILD-load time) and loads only `@rules_gala` (for `gala_imports_helper`) and
+> `@gazelle`, both regular deps. Leaf consumers (apps no one depends on) are
+> unaffected.
+
 ### Manual wiring
 
-If you need full control, build the `gazelle_binary` and `gazelle` rule
-yourself:
+If you need full control — or you hit the dev_dependency caveat above — build
+the pieces yourself. This keeps the toolchain-driven helper but loads only
+`@gazelle` and `@rules_gala` (regular deps) and names `@gala_gazelle` solely as a
+string label:
 
 ```starlark
 load("@gazelle//:def.bzl", "gazelle", "gazelle_binary")
+load("@rules_gala//gala:defs.bzl", "gala_imports_helper")
 
 gazelle_binary(
     name = "gazelle_bin",
     languages = ["@gala_gazelle//gala"],   # handles GALA + Go
 )
 
+# Reproducible import helper from the registered GALA toolchain.
+gala_imports_helper(name = "gala_imports")
+
 # gazelle:gala_prefix github.com/you/project
 gazelle(
     name = "gazelle",
     gazelle = ":gazelle_bin",
+    data = [":gala_imports"],
+    extra_args = ["-gala_helper=$(execpath :gala_imports)"],
 )
 ```
 
