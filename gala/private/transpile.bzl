@@ -11,10 +11,49 @@ Toggle at the build level:
     bazel build --@rules_gala//gala:use_persistent_worker=false //...
 """
 
+load("@rules_go//go:def.bzl", "GoInfo")
+
 _TOOLCHAIN = "@rules_gala//gala:toolchain_type"
 _BOOTSTRAP_TOOLCHAIN = "@rules_gala//gala:bootstrap_toolchain_type"
 
 # ---- shared helpers --------------------------------------------------------
+
+def _go_src_args_and_inputs(go_deps):
+    """Build the --go-src map and the .go source inputs for Go dependencies.
+
+    The transpiler's analyzer resolves third-party Go MODULE types by parsing
+    the dependency's real .go source (go/importer's source mode can't find a
+    versioned module in Bazel's external tree). For each Go dependency we read
+    its GoInfo provider to get the import path and source files, then emit a
+    `<importpath>=<dir>` entry pointing at the package's source directory.
+
+    GALA-library deps surface here too (a gala_library is a go_library under
+    the hood), but their sources are generated .gen.go files which the
+    analyzer skips, so passing them is a harmless no-op — their GALA-side
+    types come through gala_deps instead.
+
+    Returns (entries, files): a list of "importpath=dir" strings and the flat
+    list of File objects to stage as action inputs.
+    """
+    entries = []
+    files = []
+    seen = {}
+    for dep in go_deps:
+        if GoInfo not in dep:
+            continue
+        info = dep[GoInfo]
+        importpath = getattr(info, "importpath", "")
+        srcs = getattr(info, "srcs", [])
+        if hasattr(srcs, "to_list"):
+            srcs = srcs.to_list()
+        if not importpath or not srcs:
+            continue
+        if importpath in seen:
+            continue
+        seen[importpath] = True
+        entries.append(importpath + "=" + srcs[0].dirname)
+        files.extend(srcs)
+    return entries, files
 
 def _gala_sources_label(dep):
     """Translate a gala_library label to its `_gala_sources` filegroup."""
@@ -97,11 +136,15 @@ def _gala_transpile_worker_impl(ctx):
 
     args.add("--search=" + ",".join(search_paths))
 
+    go_src_entries, go_src_files = _go_src_args_and_inputs(ctx.attr.go_deps)
+    if go_src_entries:
+        args.add("--go-src=" + ",".join(go_src_entries))
+
     goroot = ctx.configuration.default_shell_env.get("GOROOT", "")
     if goroot:
         args.add("--goroot=" + goroot)
 
-    direct_inputs = list(ctx.files.srcs) + list(ctx.files.package_files) + list(ctx.files.extra_srcs)
+    direct_inputs = list(ctx.files.srcs) + list(ctx.files.package_files) + list(ctx.files.extra_srcs) + go_src_files
     if go_mod:
         direct_inputs.append(go_mod)
     if not ctx.attr.batch:
@@ -143,6 +186,7 @@ gala_transpile_worker_single = rule(
         "package_files": attr.label_list(allow_files = [".gala"], default = []),
         "extra_srcs": attr.label_list(allow_files = True, default = []),
         "gala_deps": attr.label_list(default = []),
+        "go_deps": attr.label_list(default = []),
         "batch": attr.bool(default = False),
     },
 )
@@ -157,13 +201,14 @@ gala_transpile_worker_batch = rule(
         "package_files": attr.label_list(allow_files = [".gala"], default = []),
         "extra_srcs": attr.label_list(allow_files = True, default = []),
         "gala_deps": attr.label_list(default = []),
+        "go_deps": attr.label_list(default = []),
         "batch": attr.bool(default = True),
     },
 )
 
 # ---- public macros ---------------------------------------------------------
 
-def gala_transpile(name, src, out = None, package_files = [], extra_srcs = [], gala_deps = [], use_worker = True):
+def gala_transpile(name, src, out = None, package_files = [], extra_srcs = [], gala_deps = [], go_deps = [], use_worker = True):
     """Transpile a single .gala file to Go.
 
     Args:
@@ -192,6 +237,7 @@ def gala_transpile(name, src, out = None, package_files = [], extra_srcs = [], g
             package_files = package_files,
             extra_srcs = extra_srcs,
             gala_deps = dep_src_labels,
+            go_deps = go_deps,
             visibility = ["//visibility:public"],
         )
         return
@@ -205,7 +251,7 @@ def gala_transpile(name, src, out = None, package_files = [], extra_srcs = [], g
         gala_deps = gala_deps,
     )
 
-def gala_transpile_package(name, srcs, outs = None, extra_srcs = [], gala_deps = [], use_worker = True):
+def gala_transpile_package(name, srcs, outs = None, extra_srcs = [], gala_deps = [], go_deps = [], use_worker = True):
     """Transpile every .gala file in a package in one transpiler invocation.
 
     Faster than per-file because the analyzer cache is shared across
@@ -225,6 +271,7 @@ def gala_transpile_package(name, srcs, outs = None, extra_srcs = [], gala_deps =
             outs = outs,
             extra_srcs = extra_srcs,
             gala_deps = dep_src_labels,
+            go_deps = go_deps,
             visibility = ["//visibility:public"],
         )
         return

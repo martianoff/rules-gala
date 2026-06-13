@@ -59,6 +59,7 @@ def gala_library(name, src = None, srcs = None, importpath = "", deps = [], gala
             outs = gen_go_srcs,
             extra_srcs = go_srcs,
             gala_deps = gala_deps,
+            go_deps = deps,
         )
     else:
         gala_transpile(
@@ -67,6 +68,7 @@ def gala_library(name, src = None, srcs = None, importpath = "", deps = [], gala
             out = gen_go_srcs[0],
             extra_srcs = go_srcs,
             gala_deps = gala_deps,
+            go_deps = deps,
         )
 
     all_deps = list(deps) + list(gala_deps) + [_STDLIB]
@@ -104,6 +106,7 @@ def gala_binary(name, src = None, srcs = None, deps = [], gala_deps = [], embeds
             srcs = srcs,
             outs = go_srcs,
             gala_deps = gala_deps,
+            go_deps = deps,
         )
     else:
         gala_transpile(
@@ -111,6 +114,7 @@ def gala_binary(name, src = None, srcs = None, deps = [], gala_deps = [], embeds
             src = srcs[0],
             out = go_srcs[0],
             gala_deps = gala_deps,
+            go_deps = deps,
         )
 
     all_deps = list(deps) + list(gala_deps) + [_STDLIB]
