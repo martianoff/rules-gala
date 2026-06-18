@@ -4,46 +4,70 @@ The repo serves as both the source of `rules_gala` and a Bazel module
 registry that publishes it. Releasing a version is a four-step manual
 process.
 
+## Versions vs. tags
+
+Git tags in this repo are a **single shared namespace** across every
+module it publishes (`rules_gala`, `gala_gazelle`, …), so the next free
+tag is usually *not* equal to the next `rules_gala` version. Earlier
+releases let the two diverge — module `0.1.2` shipped from tag `0.2.1`,
+`0.1.3` from tag `0.2.3` — because `git tag <version>` collided with a
+tag already taken by a `gala_gazelle` release.
+
+**Going forward, keep them equal:** pick the next tag that is free across
+*all* modules and use that same number as both the new module version
+and the release tag (e.g. `0.2.6` shipped as module version `0.2.6` from
+tag `0.2.6`). Find the highest tag in use with:
+
+```bash
+git tag --list | sort -V | tail
+```
+
+In the steps below, `<version>` is the new `rules_gala` module version
+and `<tag>` is the git tag — equal for new releases.
+
 ## Steps
 
-1. **Bump the version in `MODULE.bazel`** at the repo root.
+1. **Bump the version in `MODULE.bazel`** at the repo root to `<version>`.
 
-2. **Create a registry entry** under `modules/rules_gala/<new version>/`:
+2. **Create a registry entry** under `modules/rules_gala/<version>/`:
 
    ```bash
-   cp -r modules/rules_gala/<previous version> modules/rules_gala/<new version>
-   cp MODULE.bazel modules/rules_gala/<new version>/MODULE.bazel
-   # Edit modules/rules_gala/<new version>/source.json:
-   #   - url should reference the new tag tarball
-   #   - strip_prefix should be `rules-gala-<new version>`
+   cp -r modules/rules_gala/<previous version> modules/rules_gala/<version>
+   cp MODULE.bazel modules/rules_gala/<version>/MODULE.bazel
+   # Edit modules/rules_gala/<version>/source.json:
+   #   - url          -> .../archive/refs/tags/<tag>.tar.gz
+   #   - strip_prefix -> rules-gala-<tag>
    #   - leave integrity empty for now
    ```
 
-   Add the new version to `modules/rules_gala/metadata.json`'s
-   `"versions"` array.
+   Add `<version>` to `modules/rules_gala/metadata.json`'s `"versions"`
+   array.
 
-3. **Commit, tag, and push**:
+3. **Commit, tag, and push.** Push the branch and the single new tag
+   explicitly — avoid `git push --tags`, which would push every stray
+   local tag:
 
    ```bash
    git add -A
-   git commit -m "Release <new version>"
-   git tag <new version>
-   git push origin main --tags
+   git commit -m "Release rules_gala <version>"
+   git tag <tag>
+   git push origin main
+   git push origin <tag>
    ```
 
 4. **Compute the integrity hash and update source.json**:
 
    ```bash
    curl -L -o /tmp/release.tar.gz \
-     https://github.com/martianoff/rules-gala/archive/refs/tags/<new version>.tar.gz
+     https://github.com/martianoff/rules-gala/archive/refs/tags/<tag>.tar.gz
    echo "sha256-$(openssl dgst -sha256 -binary /tmp/release.tar.gz | base64)"
    ```
 
-   Paste the result into `modules/rules_gala/<new version>/source.json`
+   Paste the result into `modules/rules_gala/<version>/source.json`
    under `"integrity"`. Commit and push:
 
    ```bash
-   git commit -m "Pin integrity for <new version>"
+   git commit -am "Pin integrity for rules_gala <version>"
    git push origin main
    ```
 
