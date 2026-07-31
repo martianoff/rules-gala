@@ -88,6 +88,11 @@ var fakeImports = map[string]rawFile{
 		Package: "internalpkg",
 		Imports: []rawImport{{Path: "martianoff/gala/test", Dot: true}},
 	},
+	"detail.gala": {
+		File:    "detail.gala",
+		Package: "detail",
+		Imports: []rawImport{},
+	},
 	"lib_test.gala": {
 		File:    "lib_test.gala",
 		Package: "main",
@@ -508,6 +513,79 @@ func TestPackageName_RootFromPrefix(t *testing.T) {
 	for _, c := range cases {
 		if got := packageName(c.rel, c.prefix); got != c.want {
 			t.Errorf("packageName(%q, %q) = %q, want %q", c.rel, c.prefix, got, c.want)
+		}
+	}
+}
+
+// A gala_library under an `internal/` directory is private to the tree rooted
+// at that directory's parent, so the generated Bazel visibility mirrors GALA's
+// import-path rule instead of defaulting to public. Without this, the two
+// layers disagree: Bazel would allow a dependency edge that the Go compiler
+// then rejects at the end of the build.
+func TestGenerateInternalLibraryVisibility(t *testing.T) {
+	gl := &galaLang{runner: fakeRunner}
+	c := testConfig()
+	res := gl.GenerateRules(genArgs(c, "privlib/internal/detail", []string{"detail.gala"}))
+
+	var lib *rule.Rule
+	for _, r := range res.Gen {
+		if r.Kind() == "gala_library" {
+			lib = r
+		}
+	}
+	if lib == nil {
+		t.Fatalf("want a gala_library, got %v", ruleKinds(res.Gen))
+	}
+	want := []string{"//privlib:__subpackages__"}
+	if got := attrStrings(lib, "visibility"); !reflect.DeepEqual(got, want) {
+		t.Errorf("visibility = %v, want %v", got, want)
+	}
+}
+
+// A package whose name merely STARTS with "internal" is an ordinary public
+// package — only a whole path element counts.
+func TestGenerateNonInternalLibraryStaysPublic(t *testing.T) {
+	gl := &galaLang{runner: fakeRunner}
+	c := testConfig()
+	res := gl.GenerateRules(genArgs(c, "internalpkg", []string{"internal_lib.gala"}))
+
+	var lib *rule.Rule
+	for _, r := range res.Gen {
+		if r.Kind() == "gala_library" {
+			lib = r
+		}
+	}
+	if lib == nil {
+		t.Fatalf("want a gala_library, got %v", ruleKinds(res.Gen))
+	}
+	want := []string{"//visibility:public"}
+	if got := attrStrings(lib, "visibility"); !reflect.DeepEqual(got, want) {
+		t.Errorf("visibility = %v, want %v (internalpkg is not an `internal` element)", got, want)
+	}
+}
+
+// Unit coverage for the rule itself, including the shapes that have no
+// testdata fixture: a repo-root internal/ tree and nested internal/ elements.
+func TestLibraryVisibility(t *testing.T) {
+	cases := []struct {
+		rel  string
+		want string
+	}{
+		{"", "//visibility:public"},
+		{"lib", "//visibility:public"},
+		{"lib/internalpkg/thing", "//visibility:public"},
+		{"lib/nointernal", "//visibility:public"},
+		{"internal", "//:__subpackages__"},
+		{"internal/detail", "//:__subpackages__"},
+		{"lib/internal/detail", "//lib:__subpackages__"},
+		{"lib/sub/internal/deep", "//lib/sub:__subpackages__"},
+		// Last element wins, matching cmd/go's findInternal.
+		{"a/internal/b/internal/c", "//a/internal/b:__subpackages__"},
+	}
+	for _, tc := range cases {
+		got := libraryVisibility(tc.rel)
+		if !reflect.DeepEqual(got, []string{tc.want}) {
+			t.Errorf("libraryVisibility(%q) = %v, want [%s]", tc.rel, got, tc.want)
 		}
 	}
 }

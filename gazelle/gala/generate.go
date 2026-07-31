@@ -15,6 +15,40 @@ import (
 	"github.com/bazelbuild/bazel-gazelle/rule"
 )
 
+// libraryVisibility returns the visibility for the gala_library generated at
+// rel (a slash-separated package path relative to the repo root).
+//
+// A package under a directory named "internal" is private to the tree rooted
+// at that directory's parent — GALA applies Go's rule to import paths, and the
+// generated Bazel visibility mirrors it so the two layers agree and a
+// violation is caught at analysis time rather than by the Go compiler at the
+// end of the build:
+//
+//	internal/detail            -> //:__subpackages__
+//	lib/internal/detail        -> //lib:__subpackages__
+//	lib/sub/internal/deep      -> //lib/sub:__subpackages__
+//	lib/internalpkg/thing      -> //visibility:public  (not an "internal" element)
+//
+// Only a whole path ELEMENT counts, and the LAST one wins — matching cmd/go's
+// findInternal, so `a/internal/b/internal/c` binds to `//a/internal/b`.
+// Everything else stays public, which is the historical default.
+func libraryVisibility(rel string) []string {
+	elems := strings.Split(rel, "/")
+	idx := -1
+	for i := len(elems) - 1; i >= 0; i-- {
+		if elems[i] == "internal" {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return []string{"//visibility:public"}
+	}
+	// idx == 0 yields "//:__subpackages__" — a repo-root internal/ tree,
+	// visible to the whole repo but to nothing outside it.
+	return []string{"//" + strings.Join(elems[:idx], "/") + ":__subpackages__"}
+}
+
 // mainFuncRe matches a zero-argument main function declaration, used together
 // with a "package main" declaration to identify a gala_binary. This is a
 // lightweight content check, not a re-parse of the grammar.
@@ -115,7 +149,7 @@ func (gl *galaLang) GenerateRules(args language.GenerateArgs) language.GenerateR
 				r = rule.NewRule("gala_library", name)
 				r.SetAttr("srcs", srcFiles)
 				r.SetAttr("importpath", importPath)
-				r.SetAttr("visibility", []string{"//visibility:public"})
+				r.SetAttr("visibility", libraryVisibility(args.Rel))
 				if len(goSrcs) > 0 {
 					// Mixed package: bundle the extra .go and add their Go
 					// imports so deps cover both source kinds.
