@@ -10,7 +10,7 @@ own MODULE.bazel:
 
 module(
     name = "rules_gala",
-    version = "0.2.6",
+    version = "0.3.0",
     compatibility_level = 1,
 )
 
