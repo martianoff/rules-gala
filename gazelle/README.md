@@ -104,7 +104,9 @@ Per directory containing `.gala` files:
 
 - **`gala_library`** for the non-test sources, with `importpath` derived from
   the configured prefix plus the directory's repo-relative path, and
-  `visibility = ["//visibility:public"]`.
+  `visibility = ["//visibility:public"]` — except under an `internal/`
+  directory, where the visibility mirrors GALA's package-privacy rule (see
+  below).
 - **`gala_binary`** instead of a library when a source declares `package main`
   and defines a zero-argument `main()`. The target — library or binary — is
   named after the directory's base name, so put each `main` in its own
@@ -119,6 +121,28 @@ Per directory containing `.gala` files:
   `gala_test(srcs = [...])` form.
 
 `srcs` are sorted; `deps` are resolved from each file's GALA imports.
+
+### `internal/` packages
+
+GALA applies Go's rule to import paths: a package under a directory named
+`internal` is importable only from the tree rooted at that directory's parent,
+and the transpiler rejects a violation with `GALA-E0041`. The generated Bazel
+visibility mirrors that rule, so both layers agree and a bad dependency edge is
+caught at analysis time instead of by the Go compiler at the end of the build:
+
+| Package directory | Generated `visibility` |
+|---|---|
+| `internal/detail` | `["//:__subpackages__"]` |
+| `lib/internal/detail` | `["//lib:__subpackages__"]` |
+| `lib/sub/internal/deep` | `["//lib/sub:__subpackages__"]` |
+| `lib/internalpkg/thing` | `["//visibility:public"]` |
+
+Only a whole path **element** counts — a directory named `internalpkg` or
+`internalize` is an ordinary public package. When a path contains more than one
+`internal` element the last one wins, matching `cmd/go`'s `findInternal`.
+
+Only `gala_library` targets are affected. Binaries are not imported, and tests
+are generated alongside the code they test.
 
 ### Mixed GALA/Go packages
 
