@@ -13,12 +13,14 @@ module(
     version = "0.3.2",
     compatibility_level = 1,
 
-    # The repo contents cache — extracted external repositories shared across
-    # workspaces instead of unpacked once per output base — arrived in Bazel
-    # 8.3. Without it every worktree of every consumer re-extracts the pinned
-    # Go SDK, which is ~207 MB a time. See docs/BUILD_DISK_USAGE.MD in the
-    # gala repo for the measurements behind this floor.
-    bazel_compatibility = [">=8.3.0"],
+    # rules_gala is developed and tested against Bazel 9 (see //.bazelversion),
+    # and 9 is where the repo contents cache — extracted external repositories
+    # shared across workspaces rather than unpacked once per output base — is on
+    # by default. The flag exists from 8.3 but defaults to "" there, which means
+    # disabled, so on 8.x every worktree of every consumer still re-extracts the
+    # pinned Go SDK at ~207 MB a time. See docs/BUILD_DISK_USAGE.MD in the gala
+    # repo for the measurements.
+    bazel_compatibility = [">=9.0.0"],
 )
 
 bazel_dep(name = "bazel_skylib", version = "1.7.1")
