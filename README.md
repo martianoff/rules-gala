@@ -4,6 +4,27 @@ Bazel rules and a bzlmod extension for the [GALA](https://github.com/martianoff/
 
 This module also functions as a Bazel module registry that publishes `rules_gala` itself.
 
+## Requirements
+
+**Bazel 9 or newer**, declared as `bazel_compatibility` on the module so an
+older Bazel fails with a clear message rather than a confusing one. That is
+what rules_gala is developed and tested against.
+
+It is also where the **repo contents cache** is on by default: a store of
+*extracted* external repositories shared across workspaces. Before it,
+`--repository_cache` cached only the downloaded archive, so every Bazel output
+base unpacked its own copy of every external repo. Because Bazel keys the
+output base on the *path* of the workspace, that means once per git worktree —
+and the pinned Go SDK a GALA build needs is ~207 MB each time. A developer with
+a handful of worktrees was paying gigabytes for one toolchain version.
+
+The `--repo_contents_cache` flag does exist from Bazel 8.3, but there it
+defaults to the empty string, and an empty string means *disabled* — so on 8.x
+you get the saving only by passing the flag explicitly.
+
+Use [Bazelisk](https://github.com/bazelbuild/bazelisk) and pin the version in a
+`.bazelversion`; a directly installed `bazel` ignores that file.
+
 ## Setup
 
 In your `MODULE.bazel`:
