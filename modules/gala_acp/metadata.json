@@ -1,0 +1,16 @@
+{
+    "homepage": "https://github.com/martianoff/gala-acp",
+    "maintainers": [
+        {
+            "github": "martianoff",
+            "name": "Maksim Martianov"
+        }
+    ],
+    "repository": [
+        "github:martianoff/gala-acp"
+    ],
+    "versions": [
+        "0.4.0"
+    ],
+    "yanked_versions": {}
+}
