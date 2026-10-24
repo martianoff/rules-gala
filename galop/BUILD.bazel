@@ -1,0 +1,9 @@
+package(default_visibility = ["//visibility:public"])
+
+# Toolchain type for galop, the ANTLR-compatible parser generator used by
+# galop_parser. Implementations are created by the `galop` module extension
+# (prebuilt release binaries, see extensions.bzl) or by hand with
+# galop_toolchain from toolchain.bzl.
+toolchain_type(name = "toolchain_type")
+
+exports_files(glob(["*.bzl"]))

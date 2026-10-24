@@ -1,0 +1,92 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+load("//galop:defs.bzl", "galop_parser")
+load("//galop:toolchain.bzl", "galop_toolchain")
+load(":galop_parser_test.bzl", "galop_parser_test_suite")
+
+# Tests for galop_parser, run against a fake galop (fake_galop/) so they need
+# no galop release. The toolchain below is registered from the root
+# MODULE.bazel as a dev dependency, so it never leaks into consumers.
+
+galop_toolchain(
+    name = "fake_galop_toolchain_impl",
+    galop = "//galop/tests/fake_galop",
+)
+
+toolchain(
+    name = "fake_galop_toolchain",
+    toolchain = ":fake_galop_toolchain_impl",
+    toolchain_type = "//galop:toolchain_type",
+)
+
+# Combined grammar, companion flavor (the defaults).
+galop_parser(
+    name = "calc_parser",
+    grammar = "Calc.g4",
+    package = "calc",
+)
+
+go_library(
+    name = "calc",
+    srcs = [":calc_parser"],
+    importpath = "github.com/martianoff/rules-gala/galop/tests/calc",
+)
+
+go_test(
+    name = "calc_test",
+    srcs = ["calc_test.go"],
+    embed = [":calc"],
+)
+
+# Separate lexer and parser grammars generating into one package.
+galop_parser(
+    name = "split_lexer",
+    grammar = "CalcLexer.g4",
+    kind = "lexer",
+    package = "split",
+)
+
+galop_parser(
+    name = "split_parser",
+    grammar = "CalcParser.g4",
+    imports = ["CalcLexer.g4"],
+    kind = "parser",
+    package = "split",
+)
+
+go_library(
+    name = "split",
+    srcs = [
+        ":split_lexer",
+        ":split_parser",
+    ],
+    importpath = "github.com/martianoff/rules-gala/galop/tests/split",
+)
+
+go_test(
+    name = "split_test",
+    srcs = ["split_test.go"],
+    embed = [":split"],
+)
+
+# Standalone flavor with listener and visitor.
+galop_parser(
+    name = "expr_parser",
+    flavor = "standalone",
+    grammar = "Expr.g4",
+    package = "expr",
+    visitor = True,
+)
+
+go_library(
+    name = "expr",
+    srcs = [":expr_parser"],
+    importpath = "github.com/martianoff/rules-gala/galop/tests/expr",
+)
+
+go_test(
+    name = "expr_test",
+    srcs = ["expr_test.go"],
+    embed = [":expr"],
+)
+
+galop_parser_test_suite(name = "galop_parser_tests")

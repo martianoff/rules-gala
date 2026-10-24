@@ -33,3 +33,10 @@ bazel_dep(name = "rules_go", version = "0.59.0")
 # it explicitly from their own MODULE.bazel, e.g.:
 #
 #     register_toolchains("@gala//tools/toolchain:gala_toolchain")
+
+# Test-only: galop_parser's tests in //galop/tests run against a fake galop.
+# dev_dependency keeps this registration out of every consumer's build.
+register_toolchains(
+    "//galop/tests:fake_galop_toolchain",
+    dev_dependency = True,
+)
