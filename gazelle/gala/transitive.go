@@ -1,11 +1,13 @@
 package gala
 
 import (
+	"log"
 	"strings"
 
 	"github.com/bazelbuild/bazel-gazelle/config"
 	"github.com/bazelbuild/bazel-gazelle/label"
 	"github.com/bazelbuild/bazel-gazelle/rule"
+	bzl "github.com/bazelbuild/buildtools/build"
 )
 
 // Every GALA rule also gets its GALA deps' own GALA deps, transitively, as
@@ -34,21 +36,36 @@ type depGraph struct {
 type depNode struct {
 	label      label.Label
 	visibility []string
-	gc         *galaConfig
+	// c and gc are the config of the library's directory. An import the
+	// library wrote is classified with them, not with the config of the rule
+	// being resolved.
+	c  *config.Config
+	gc *galaConfig
 	// raw holds the imports of a rule generated this run; nil means the rule
 	// was only read from an existing BUILD file (its directory is not being
-	// updated), so its existing deps and galaDeps stand in for its imports.
-	raw      *galaImports
+	// updated).
+	raw *galaImports
+	// deps and galaDeps are labels from the rule's BUILD attrs: every entry
+	// for a rule not regenerated (they stand in for its imports), only the
+	// `# keep` entries for a regenerated one (gazelle won't drop those).
 	deps     []label.Label
 	galaDeps []label.Label
 }
 
 // closure is the set of GALA dependencies reachable from one import path.
 type closure struct {
-	imports []string
-	// galaLeaves are gala_deps labels of rules not regenerated this run that
-	// can't be mapped back to an import path (cross-module libraries).
+	edges []edge
+	// std are stdlib deps read from BUILD attrs; they are not walked.
+	std []stdLeaf
+	// galaLeaves are gala_deps labels that can't be mapped back to an import
+	// path (cross-module libraries).
 	galaLeaves []label.Label
+}
+
+// edge is an import path reached by the walk and the library that wrote it.
+type edge struct {
+	imp string
+	by  *depNode
 }
 
 func newDepGraph() *depGraph {
@@ -69,15 +86,52 @@ func (g *depGraph) record(c *config.Config, r *rule.Rule, f *rule.File, importpa
 		return
 	}
 	l := label.New(c.RepoName, f.Pkg, r.Name())
-	n := &depNode{label: l, visibility: ruleVisibility(r, f), gc: getGalaConfig(c)}
+	n := &depNode{label: l, visibility: ruleVisibility(r, f), c: c, gc: getGalaConfig(c)}
 	if gi, ok := r.PrivateAttr(galaImportsKey).(*galaImports); ok && gi != nil {
 		n.raw = gi
-	} else {
-		n.deps = absLabels(r.AttrStrings("deps"), c.RepoName, f.Pkg)
-		n.galaDeps = absLabels(r.AttrStrings("gala_deps"), c.RepoName, f.Pkg)
+	}
+	keptOnly := n.raw != nil
+	for attr, dst := range map[string]*[]label.Label{"deps": &n.deps, "gala_deps": &n.galaDeps} {
+		strs, complete := listStrings(r.Attr(attr), keptOnly)
+		if !complete {
+			log.Printf("gazelle(gala): %s: %s is not a plain list (select(), a variable, ...); only its list parts are followed for transitive GALA deps", l, attr)
+		}
+		*dst = absLabels(strs, c.RepoName, f.Pkg)
 	}
 	g.nodes[importpath] = n
 	g.byLabel[l] = importpath
+}
+
+// listStrings returns the string elements of an attr value, including the
+// list parts of a `+` concatenation. keptOnly limits it to elements marked
+// `# keep`. complete is false when part of the value isn't a list literal.
+func listStrings(e bzl.Expr, keptOnly bool) (strs []string, complete bool) {
+	switch e := e.(type) {
+	case nil:
+		return nil, true
+	case *bzl.ListExpr:
+		complete = true
+		for _, el := range e.List {
+			s, ok := el.(*bzl.StringExpr)
+			if !ok {
+				complete = false
+				continue
+			}
+			if !keptOnly || rule.ShouldKeep(el) {
+				strs = append(strs, s.Value)
+			}
+		}
+		return strs, complete
+	case *bzl.BinaryExpr:
+		if e.Op != "+" {
+			return nil, false
+		}
+		x, xok := listStrings(e.X, keptOnly)
+		y, yok := listStrings(e.Y, keptOnly)
+		return append(x, y...), xok && yok
+	default:
+		return nil, false
+	}
 }
 
 // ruleVisibility returns r's visibility, falling back to the package's
@@ -106,67 +160,90 @@ func absLabels(strs []string, repo, pkg string) []label.Label {
 		l = l.Abs(repo, pkg)
 		if l.Repo == "" {
 			l.Repo = repo
+			l.Canonical = false
 		}
 		out = append(out, l)
 	}
 	return out
 }
 
-// canSee reports whether a rule in fromPkg may depend on n. It recognizes the
-// two visibilities generated libraries get (see libraryVisibility): public,
-// and an internal/ package's //<parent>:__subpackages__. Anything else — a
-// package_group, a private or hand-written list — counts as not visible, so an
-// unknown form never adds a dep that would fail Bazel's visibility check.
+// canSee reports whether a rule in fromPkg may depend on n. It understands
+// //visibility:public, //visibility:private, and __pkg__ / __subpackages__ in
+// the main repo — what generated libraries use (see libraryVisibility) and
+// the common hand-written forms. Any other entry (a package_group, another
+// repo) is skipped, so an unknown form never adds a dep that would fail
+// Bazel's visibility check. nil visibility is Bazel's private default.
 func (n *depNode) canSee(fromPkg string) bool {
-	if len(n.visibility) != 1 {
-		return false
+	vis := n.visibility
+	if len(vis) == 0 {
+		vis = []string{"//visibility:private"}
 	}
-	switch v := n.visibility[0]; {
-	case v == "//visibility:public":
-		return true
-	case v == libraryVisibility(n.label.Pkg)[0]:
-		root := strings.TrimSuffix(strings.TrimPrefix(v, "//"), ":__subpackages__")
-		return root == "" || fromPkg == root || strings.HasPrefix(fromPkg, root+"/")
+	for _, v := range vis {
+		switch v {
+		case "//visibility:public":
+			return true
+		case "//visibility:private":
+			if fromPkg == n.label.Pkg {
+				return true
+			}
+			continue
+		}
+		l, err := label.Parse(v)
+		if err != nil || (l.Repo != "" && l.Repo != n.label.Repo) {
+			continue
+		}
+		l = l.Abs(n.label.Repo, n.label.Pkg)
+		switch l.Name {
+		case "__pkg__":
+			if fromPkg == l.Pkg {
+				return true
+			}
+		case "__subpackages__":
+			if l.Pkg == "" || fromPkg == l.Pkg || strings.HasPrefix(fromPkg, l.Pkg+"/") {
+				return true
+			}
+		}
 	}
 	return false
 }
 
-// edges returns n's direct GALA dependencies as import paths, plus any
-// gala_deps labels that can't be mapped back to one.
-func (g *depGraph) edges(n *depNode) (imps []string, galaLeaves []label.Label) {
+// stdLeaf is a stdlib dep read from a BUILD attr, kept as written (only its
+// repo respelled) so an explicit target name survives.
+type stdLeaf struct {
+	label label.Label
+	imp   string
+}
+
+// edges returns n's direct dependencies: in-repo GALA libraries and raw
+// imports as import paths, stdlib labels from its BUILD attrs, and gala_deps
+// labels that are neither (cross-module libraries). Any other label in deps is
+// a plain Go dep, which is not propagated.
+func (g *depGraph) edges(n *depNode) (imps []string, std []stdLeaf, galaLeaves []label.Label) {
 	if n.raw != nil {
-		return n.raw.imports, nil
+		imps = append(imps, n.raw.imports...)
 	}
-	toImport := func(l label.Label) (string, bool) {
-		if imp, ok := g.byLabel[l]; ok {
-			return imp, true
-		}
-		if l.Repo != n.label.Repo {
-			return stdlibImport(n.gc, l)
-		}
-		return "", false
-	}
-	for _, l := range n.deps {
-		// Anything else in deps is a plain Go dep, which is not propagated.
-		if imp, ok := toImport(l); ok {
-			imps = append(imps, imp)
-		}
-	}
-	for _, l := range n.galaDeps {
-		if imp, ok := toImport(l); ok {
-			imps = append(imps, imp)
-		} else {
-			galaLeaves = append(galaLeaves, l)
+	for _, attr := range []struct {
+		labels []label.Label
+		gala   bool
+	}{{n.deps, false}, {n.galaDeps, true}} {
+		for _, l := range attr.labels {
+			if imp, ok := g.byLabel[l]; ok {
+				imps = append(imps, imp)
+			} else if sl, imp, ok := parseStdlibLabel(n.gc, l); ok && l.Repo != n.label.Repo {
+				std = append(std, stdLeaf{label: sl, imp: imp})
+			} else if attr.gala {
+				galaLeaves = append(galaLeaves, l)
+			}
 		}
 	}
-	return imps, galaLeaves
+	return imps, std, galaLeaves
 }
 
 // reachable returns every import path reachable from root through indexed
-// gala_library rules, skipping each rule's macro-injected imports. Only
-// indexed libraries are expanded: the deps of libraries from other modules
-// are not visible to gazelle. The result is not filtered by kind or
-// visibility; Resolve classifies each entry for the rule at hand.
+// gala_library rules, each with the library that wrote it, skipping that
+// library's macro-injected imports. Only indexed libraries are expanded: the
+// deps of libraries from other modules are not visible to gazelle. The result
+// is not filtered by kind or visibility; Resolve does that per rule.
 func (g *depGraph) reachable(root string) *closure {
 	if cl, ok := g.closures[root]; ok {
 		return cl
@@ -178,14 +255,19 @@ func (g *depGraph) reachable(root string) *closure {
 		if !ok {
 			continue
 		}
-		imps, leaves := g.edges(n)
+		imps, std, leaves := g.edges(n)
 		cl.galaLeaves = append(cl.galaLeaves, leaves...)
+		for _, s := range std {
+			if !n.gc.ImplicitDeps[s.imp] {
+				cl.std = append(cl.std, s)
+			}
+		}
 		for _, imp := range imps {
 			if seen[imp] || n.gc.ImplicitDeps[imp] {
 				continue
 			}
 			seen[imp] = true
-			cl.imports = append(cl.imports, imp)
+			cl.edges = append(cl.edges, edge{imp: imp, by: n})
 			queue = append(queue, imp)
 		}
 	}

@@ -218,7 +218,10 @@ For every GALA import in a rule's sources:
   otherwise `//<relpath>`.
 - **GALA stdlib / external packages** (under `gala_stdlib_prefix`, default
   `martianoff/gala`) resolve to the matching in-repo package if one exists, and
-  otherwise to `@<gala_stdlib_repo>//<relpath>` (default repo `gala`).
+  otherwise to `@<gala_stdlib_repo>//<relpath>` (default repo `gala`). When an
+  import lies under both `gala_prefix` and `gala_stdlib_prefix` (a prefix such
+  as `martianoff` above the stdlib's `martianoff/gala`), the longer namespace
+  wins; on a tie (the GALA repo itself) it is in-repo.
 - **Go stdlib and other non-GALA imports** (`fmt`, `strings`, …) are skipped,
   except in a mixed package, where the `.go` files' third-party / in-repo Go
   imports are resolved to `deps` via the embedded Go resolver.
@@ -251,18 +254,24 @@ harmless; a missing one fails the build. The rules:
   packages (`@gala//…`), and `# gazelle:resolve gala` overrides (written to
   `gala_deps`, as for a direct import). Plain Go deps of a GALA library are not
   propagated — neither Go stdlib, in-repo `go_library`, nor third-party modules.
+- A library's imports are read with the directives of *its* directory
+  (`gala_prefix`, `gala_stdlib_repo`, `gala_implicit_dep`, `resolve`), not the
+  consuming rule's.
+- `# keep` entries in a library's `deps` / `gala_deps` are followed too.
 - The walk follows in-repo libraries only; see
   [Known limitations](#known-limitations) for libraries from other modules.
-- A dep the rule can't see is not added: an `internal/` package is added only
-  inside its tree. Only the visibilities gazelle generates are understood
-  (public, and an `internal/` package's `//<parent>:__subpackages__`); any
-  other form counts as not visible. Its own deps are still followed.
+- A dep the rule can't see is not added, and gazelle logs it: e.g. an
+  `internal/` package is added only inside its tree. `//visibility:public`,
+  `//visibility:private`, `__pkg__` and `__subpackages__` are understood; other
+  entries (a `package_group`, another repo) never grant visibility. The skipped
+  dep's own deps are still followed.
 - A rule never gets its own package: neither a library's own importpath nor
   the package an internal `gala_test` compiles via `lib_srcs`. Cycles stop.
 - Tests and binaries get the same treatment as libraries.
 - **Partial runs** (`gazelle update some/dir`): for a library whose directory
   isn't being updated, its existing `deps` / `gala_deps` stand in for its
-  imports.
+  imports. Only their list parts are read; gazelle logs a value it can't read
+  (`select()`, a variable).
 
 ## Directives
 

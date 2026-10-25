@@ -1,6 +1,7 @@
 package gala
 
 import (
+	"log"
 	"path"
 	"sort"
 	"strings"
@@ -94,16 +95,26 @@ func (gl *galaLang) Resolve(
 		for _, l := range cl.galaLeaves {
 			galaDeps[l.Rel(from.Repo, from.Pkg).String()] = true
 		}
-		for _, imp := range cl.imports {
-			if exclude[imp] || gc.ImplicitDeps[imp] {
+		for _, s := range cl.std {
+			if !gc.ImplicitDeps[s.imp] {
+				deps[s.label.String()] = true
+			}
+		}
+		for _, e := range cl.edges {
+			// This rule's macros inject its implicit deps; listing one again
+			// would duplicate it.
+			if exclude[e.imp] || gc.ImplicitDeps[e.imp] {
 				continue
 			}
-			switch lbl, kind := classifyImport(c, gc, ix, imp, from); kind {
+			// Classify with the config of the library that wrote the import.
+			switch lbl, kind := classifyImport(e.by.c, e.by.gc, ix, e.imp, from); kind {
 			case depOverride:
 				galaDeps[lbl] = true
 			case depIndexed:
-				if n := gl.graph.nodes[imp]; n != nil && n.canSee(from.Pkg) {
+				if n := gl.graph.nodes[e.imp]; n != nil && n.canSee(from.Pkg) {
 					deps[lbl] = true
+				} else {
+					log.Printf("gazelle(gala): %s: not adding transitive dep %s (reached through %s): it is not visible to this rule", from, lbl, e.by.label)
 				}
 			case depStdlib:
 				deps[lbl] = true
@@ -152,8 +163,11 @@ const (
 )
 
 // classifyImport maps a GALA import path to a Bazel label string (relative to
-// from) and says what kind of dep it is. Lookup order: override, index,
-// in-repo prefix, stdlib namespace.
+// from) and says what kind of dep it is. Lookup order: override, index, then
+// the in-repo prefix or the stdlib namespace — whichever is longer when both
+// match, so a gala_prefix that is an ancestor of the stdlib namespace (e.g.
+// `martianoff` vs `martianoff/gala`) doesn't capture stdlib imports. On a tie
+// (the GALA repo itself) the in-repo prefix wins.
 func classifyImport(c *config.Config, gc *galaConfig, ix *resolve.RuleIndex, imp string, from label.Label) (string, depKind) {
 	if l, ok := resolve.FindRuleWithOverride(c, resolve.ImportSpec{Lang: languageName, Imp: imp}, languageName); ok {
 		return l.Rel(from.Repo, from.Pkg).String(), depOverride
@@ -161,27 +175,36 @@ func classifyImport(c *config.Config, gc *galaConfig, ix *resolve.RuleIndex, imp
 	if matches := ix.FindRulesByImport(resolve.ImportSpec{Lang: languageName, Imp: imp}, languageName); len(matches) > 0 {
 		return matches[0].Label.Rel(from.Repo, from.Pkg).String(), depIndexed
 	}
-	if rel, ok := relUnder(imp, gc.Prefix); ok && rel != "" {
-		return label.New("", rel, path.Base(rel)).Rel(from.Repo, from.Pkg).String(), depInRepo
+	rel, inRepo := relUnder(imp, gc.Prefix)
+	inRepo = inRepo && rel != ""
+	stdRel, inStd := relUnder(imp, gc.StdlibPrefix)
+	inStd = inStd && stdRel != ""
+	if inStd && (!inRepo || len(gc.StdlibPrefix) > len(gc.Prefix)) {
+		return stdlibLabel(gc, stdRel).String(), depStdlib
 	}
-	if rel, ok := relUnder(imp, gc.StdlibPrefix); ok && rel != "" {
-		return stdlibLabel(gc, rel).String(), depStdlib
+	if inRepo {
+		return label.New("", rel, path.Base(rel)).Rel(from.Repo, from.Pkg).String(), depInRepo
 	}
 	return "", depNone
 }
 
 // stdlibLabel is the label of the GALA stdlib package at rel in the external
-// stdlib repo: @<repo>//<rel>:<base>. stdlibImport is its inverse.
+// stdlib repo: @<repo>//<rel>:<base>. parseStdlibLabel is its inverse.
 func stdlibLabel(gc *galaConfig, rel string) label.Label {
 	return label.New(gc.StdlibRepo, rel, path.Base(rel))
 }
 
-// stdlibImport maps a stdlibLabel back to its import path.
-func stdlibImport(gc *galaConfig, l label.Label) (string, bool) {
-	if l.Repo != gc.StdlibRepo || l.Pkg == "" || l.Name != path.Base(l.Pkg) {
-		return "", false
+// parseStdlibLabel recognizes a label in the stdlib repo, as written in a
+// BUILD file: the apparent repo name (@gala//pkg) or a canonical spelling
+// (@@gala//pkg, @@gala+//pkg), with any target name. It returns the label
+// respelled with the apparent repo name, and the package's import path.
+func parseStdlibLabel(gc *galaConfig, l label.Label) (label.Label, string, bool) {
+	repoOK := l.Repo == gc.StdlibRepo ||
+		(l.Canonical && (l.Repo == gc.StdlibRepo+"+" || strings.HasPrefix(l.Repo, gc.StdlibRepo+"~")))
+	if !repoOK || l.Pkg == "" {
+		return label.NoLabel, "", false
 	}
-	return gc.StdlibPrefix + "/" + l.Pkg, true
+	return label.New(gc.StdlibRepo, l.Pkg, l.Name), gc.StdlibPrefix + "/" + l.Pkg, true
 }
 
 // resolveGoImport maps a non-GALA import to its Bazel label using gazelle-go's
