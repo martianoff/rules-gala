@@ -79,9 +79,10 @@ file name. Because Bazel must know the output file names before galop runs,
         "imports": attr.label_list(
             allow_files = [".g4", ".tokens"],
             doc = "Other grammars this one imports, or token vocabularies it " +
-                  "references with `tokenVocab`. They are made available to " +
-                  "galop as inputs; keep them next to `grammar` (galop looks " +
-                  "there) or point galop at them with `galop_opts`.",
+                  "references with `tokenVocab`, declared as action inputs. " +
+                  "galop does not support `import` or `tokenVocab` yet (it " +
+                  "reports error 500); keep them next to `grammar`, or pass " +
+                  "`-lib` through `galop_opts`, for when it does.",
         ),
         "kind": attr.string(
             default = "combined",

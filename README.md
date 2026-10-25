@@ -180,7 +180,7 @@ galop -o <dir> -Xexact-output-dir -Dlanguage=Go -Dflavor=<flavor> [-package <p>]
 | `visitor`    | `False`       | `-visitor` / `-no-visitor`.                                                                               |
 | `defines`    | `{}`          | Extra `-D<key>=<value>` options. `language` and `flavor` are rejected: the rule sets them.               |
 | `galop_opts` | `[]`          | Extra raw arguments (e.g. `["-Werror"]`), placed before the grammar.                                      |
-| `imports`    | `[]`          | Other `.g4` / `.tokens` files the grammar imports or names in `tokenVocab`; keep them next to `grammar`. |
+| `imports`    | `[]`          | Other `.g4` / `.tokens` files the grammar imports or names in `tokenVocab`, declared as action inputs. galop does not support `import` or `tokenVocab` yet (it reports error 500), so this is for when it does. |
 
 `kind` exists because Bazel must declare a rule's output files before the
 action runs, and which files galop writes depends on the kind of grammar,
