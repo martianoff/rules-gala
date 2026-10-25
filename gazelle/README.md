@@ -182,20 +182,23 @@ symbols. Requires `rules_gala` ≥ 0.1.2.
 
 ### Known limitations
 
-- **Transpiler-surfaced transitive deps.** The extension resolves `deps` from
-  the **source-level** imports the helper reports. GALA's transpiler can emit a
-  reference to a *transitive* package the source never imports — e.g. a test
-  that dot-imports package `ui` calls a `ui` function returning a `session.*`
-  type, so the generated `.go` imports `…/session` although no `.gala` names it.
-  Gazelle can't see this, so the dep is missing. Keep it by hand with a
-  `# keep` comment, which survives regeneration:
+- **Transitive deps across module boundaries.** Gazelle only sees the
+  dependencies of GALA libraries it indexes — the ones in this repo (see
+  [Transitive GALA deps](#transitive-gala-deps)). It can't see what a library
+  from another Bazel module (e.g. `@gala//collection_immutable`, or a
+  `# gazelle:resolve`-wired library) depends on, so a type that reaches your
+  generated Go through *that* library's API is not added. Keep such a dep by
+  hand with a `# keep` comment, which survives regeneration:
 
   ```starlark
   deps = [
-      "//app/session",  # keep: transpiler surfaces session types via the ui dot-import
+      "@gala//go_interop",  # keep: named through collection_immutable's API
       ...
   ],
   ```
+
+  The same applies to in-repo libraries gazelle has not indexed — with
+  `-index=lazy` or `-index=false`, or a package that has no BUILD file yet.
 
 - **Mixed `package main`.** `gala_binary` has no `go_srcs`, so a `package main`
   directory that also holds hand-written `.go` can't be folded into one rule.
@@ -222,6 +225,46 @@ For every GALA import in a rule's sources:
 - **Macro-injected deps** (`martianoff/gala/std`, `martianoff/gala/test`) are
   skipped — the `gala_*` macros add them automatically, so emitting them in
   `deps` would be redundant.
+
+### Transitive GALA deps
+
+Each rule also gets, as direct deps, every GALA library its GALA deps depend
+on, transitively. A package's generated Go can name types from packages its
+source never imports: if `c` imports only `b`, and `b` exports
+`func Find(name string) Option[a.Cmd]`, then `b.Find("x").Map((x) => x.Name)`
+in `c` becomes a Go func literal that must spell its parameter type —
+`func(x a.Cmd) string` — so `c`'s generated Go imports `a`. rules_go's
+strict-deps check rejects that unless `a` is a direct dep of `c`, and the
+transpiler needs `a` among `c`'s direct deps to load its type information.
+
+```mermaid
+flowchart LR
+    c["c (imports b)"] -->|source import| b
+    b -->|source import| a
+    c -.->|added by gazelle| a
+```
+
+So `c` gets `deps = ["//a", "//b"]`. Some of these deps may go unused, which is
+harmless; a missing one fails the build. The rules:
+
+- Only **GALA** deps are followed: in-repo `gala_library` targets, GALA stdlib
+  packages (`@gala//…`), and `# gazelle:resolve gala` overrides (written to
+  `gala_deps`, as for a direct import). Plain Go deps of a GALA library are not
+  propagated — neither Go stdlib, in-repo `go_library`, nor third-party modules.
+- The walk follows in-repo libraries only; see
+  [Known limitations](#known-limitations) for libraries from other modules.
+- A dep the rule can't see is not added: an `internal/` package is added only
+  inside its tree (its `visibility`), and an unrecognised visibility (a
+  `package_group`, another repo) counts as not visible. Its own deps are still
+  followed.
+- A rule never gets its own package: neither a library's own importpath nor
+  the package an internal `gala_test` compiles via `lib_srcs`. Cycles stop.
+- Tests and binaries get the same treatment as libraries.
+- **Partial runs** (`gazelle update some/dir`): a library whose directory isn't
+  being updated is known only from its existing BUILD rule, so its existing
+  `deps` / `gala_deps` are used in place of its imports — its in-repo GALA
+  libraries and `@<gala_stdlib_repo>//…` deps are followed, `gala_deps` carried
+  over, and everything else treated as plain Go.
 
 ## Directives
 

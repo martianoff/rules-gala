@@ -21,7 +21,10 @@ const goLangExtKey = "go"
 // Imports implements resolve.Resolver. A gala_library is indexed by its
 // importpath so other rules can resolve imports to it. gala_binary and
 // gala_test are not importable, so they are not indexed (return nil).
-func (*galaLang) Imports(c *config.Config, r *rule.Rule, f *rule.File) []resolve.ImportSpec {
+//
+// It also records the library's own dependencies, which Resolve walks to add
+// transitive GALA deps (see transitive.go).
+func (gl *galaLang) Imports(c *config.Config, r *rule.Rule, f *rule.File) []resolve.ImportSpec {
 	if r.Kind() != "gala_library" {
 		return nil
 	}
@@ -29,6 +32,7 @@ func (*galaLang) Imports(c *config.Config, r *rule.Rule, f *rule.File) []resolve
 	if importpath == "" {
 		return nil
 	}
+	gl.dependencyGraph().record(c, r, f, importpath)
 	return []resolve.ImportSpec{{Lang: languageName, Imp: importpath}}
 }
 
@@ -36,8 +40,9 @@ func (*galaLang) Imports(c *config.Config, r *rule.Rule, f *rule.File) []resolve
 func (*galaLang) Embeds(r *rule.Rule, from label.Label) []label.Label { return nil }
 
 // Resolve implements resolve.Resolver. It translates each GALA import path in
-// the rule's payload into a Bazel label and writes the sorted set to "deps".
-func (*galaLang) Resolve(
+// the rule's payload into a Bazel label and writes the sorted set to "deps",
+// then adds the GALA libraries those deps transitively depend on.
+func (gl *galaLang) Resolve(
 	c *config.Config,
 	ix *resolve.RuleIndex,
 	rc *repo.RemoteCache,
@@ -83,6 +88,24 @@ func (*galaLang) Resolve(
 		}
 		deps[lbl] = true
 	}
+
+	// Types reachable through a GALA dep's API can be named in this rule's
+	// generated Go, so its GALA deps' own GALA deps become direct deps too.
+	// The rule's own package is never its own dep: a library's importpath, or
+	// the package an internal test compiles in via lib_srcs.
+	exclude := map[string]bool{}
+	for _, own := range []string{gi.self, r.AttrString("importpath")} {
+		if own != "" {
+			exclude[own] = true
+		}
+	}
+	var roots []string
+	for _, imp := range gi.imports {
+		if !exclude[imp] && !gc.ImplicitDeps[imp] {
+			roots = append(roots, imp)
+		}
+	}
+	gl.dependencyGraph().addTransitiveDeps(c, gc, roots, exclude, from, deps, galaDeps)
 
 	setSortedAttr(r, "deps", deps)
 	setSortedAttr(r, "gala_deps", galaDeps)
