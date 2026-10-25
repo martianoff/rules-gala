@@ -157,11 +157,12 @@ func (gl *galaLang) GenerateRules(args language.GenerateArgs) language.GenerateR
 					imps = mergeSortedUnique(imps, goFileImports(args.Dir, goSrcs))
 				}
 			}
+			gi := &galaImports{imports: imps, self: importPath}
+			// Lets Imports record this library's raw imports for the
+			// transitive-deps walk in Resolve (see transitive.go).
+			r.SetPrivateAttr(galaImportsKey, gi)
 			res.Gen = append(res.Gen, r)
-			res.Imports = append(res.Imports, &galaImports{
-				imports: imps,
-				self:    importPath,
-			})
+			res.Imports = append(res.Imports, gi)
 		}
 	}
 

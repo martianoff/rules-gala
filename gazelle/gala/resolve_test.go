@@ -50,7 +50,7 @@ func resolveDeps(t *testing.T, c *config.Config, gl *galaLang, ix *resolve.RuleI
 }
 
 func TestResolveLibraryDeps(t *testing.T) {
-	gl := &galaLang{runner: fakeRunner}
+	gl := &galaLang{runner: fakeRunner, graph: newDepGraph()}
 	c := testConfig()
 	ix := indexFromLibs(c, gl, map[string]string{
 		"collection_immutable": "martianoff/gala/collection_immutable",
@@ -75,7 +75,7 @@ func TestResolveLibraryDeps(t *testing.T) {
 }
 
 func TestResolveTestDeps(t *testing.T) {
-	gl := &galaLang{runner: fakeRunner}
+	gl := &galaLang{runner: fakeRunner, graph: newDepGraph()}
 	c := testConfig()
 	ix := indexFromLibs(c, gl, map[string]string{
 		"regex": "martianoff/gala/regex",
@@ -93,7 +93,7 @@ func TestResolveTestDeps(t *testing.T) {
 }
 
 func TestResolveExternalStdlib(t *testing.T) {
-	gl := &galaLang{runner: fakeRunner}
+	gl := &galaLang{runner: fakeRunner, graph: newDepGraph()}
 	c := testConfig()
 	// Consumer repo: prefix differs from the stdlib namespace, and the stdlib
 	// packages are not in-repo, so they map to @gala//<pkg>.
@@ -119,7 +119,7 @@ func TestResolveExternalStdlib(t *testing.T) {
 }
 
 func TestImportsIndexing(t *testing.T) {
-	gl := &galaLang{}
+	gl := &galaLang{graph: newDepGraph()}
 	lib := rule.NewRule("gala_library", "regex")
 	lib.SetAttr("importpath", "martianoff/gala/regex")
 	specs := gl.Imports(nil, lib, nil)

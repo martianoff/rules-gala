@@ -27,13 +27,17 @@ type galaLang struct {
 	// runner extracts imports from a set of .gala files. It is injectable so
 	// tests can supply a fake in place of shelling out to the helper binary.
 	runner importRunner
+	// graph records every indexed gala_library's dependencies (filled by
+	// Imports, read by Resolve) so Resolve can add transitive GALA deps.
+	// Gazelle indexes and resolves on one goroutine, so it needs no lock.
+	graph *depGraph
 }
 
 // newGalaLang constructs the GALA-only half of the extension. The public
 // NewLanguage entry point (composite.go) wraps it together with the embedded
 // gazelle-go language.
 func newGalaLang() *galaLang {
-	return &galaLang{runner: execRunner}
+	return &galaLang{runner: execRunner, graph: newDepGraph()}
 }
 
 var (
