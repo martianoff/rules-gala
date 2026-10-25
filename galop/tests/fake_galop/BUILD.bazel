@@ -1,0 +1,7 @@
+load("@rules_go//go:def.bzl", "go_binary")
+
+go_binary(
+    name = "fake_galop",
+    srcs = ["main.go"],
+    visibility = ["//galop/tests:__pkg__"],
+)
