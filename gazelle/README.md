@@ -254,17 +254,15 @@ harmless; a missing one fails the build. The rules:
 - The walk follows in-repo libraries only; see
   [Known limitations](#known-limitations) for libraries from other modules.
 - A dep the rule can't see is not added: an `internal/` package is added only
-  inside its tree (its `visibility`), and an unrecognised visibility (a
-  `package_group`, another repo) counts as not visible. Its own deps are still
-  followed.
+  inside its tree. Only the visibilities gazelle generates are understood
+  (public, and an `internal/` package's `//<parent>:__subpackages__`); any
+  other form counts as not visible. Its own deps are still followed.
 - A rule never gets its own package: neither a library's own importpath nor
   the package an internal `gala_test` compiles via `lib_srcs`. Cycles stop.
 - Tests and binaries get the same treatment as libraries.
-- **Partial runs** (`gazelle update some/dir`): a library whose directory isn't
-  being updated is known only from its existing BUILD rule, so its existing
-  `deps` / `gala_deps` are used in place of its imports — its in-repo GALA
-  libraries and `@<gala_stdlib_repo>//…` deps are followed, `gala_deps` carried
-  over, and everything else treated as plain Go.
+- **Partial runs** (`gazelle update some/dir`): for a library whose directory
+  isn't being updated, its existing `deps` / `gala_deps` stand in for its
+  imports.
 
 ## Directives
 

@@ -304,7 +304,7 @@ func TestResolveTransitiveGalaDeps(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gl := &galaLang{runner: fakeRunner}
+			gl := &galaLang{runner: fakeRunner, graph: newDepGraph()}
 			c := testConfig()
 			if tt.prefix != "" {
 				getGalaConfig(c).Prefix = tt.prefix
@@ -346,7 +346,7 @@ func sorted(s []string) []string {
 	return out
 }
 
-func TestVisibleFrom(t *testing.T) {
+func TestCanSee(t *testing.T) {
 	tests := []struct {
 		name    string
 		vis     []string
@@ -355,21 +355,22 @@ func TestVisibleFrom(t *testing.T) {
 		want    bool
 	}{
 		{"public", []string{"//visibility:public"}, "a", "b", true},
-		{"private, other package", []string{"//visibility:private"}, "a", "b", false},
-		{"private, same package", []string{"//visibility:private"}, "a", "a", true},
-		{"subpackages, inside", []string{"//lib:__subpackages__"}, "lib/internal/x", "lib/y", true},
-		{"subpackages, the root itself", []string{"//lib:__subpackages__"}, "lib/internal/x", "lib", true},
-		{"subpackages, sibling prefix", []string{"//lib:__subpackages__"}, "lib/internal/x", "library", false},
-		{"repo-root subpackages", []string{"//:__subpackages__"}, "internal/x", "anything", true},
-		{"relative pkg", []string{":__pkg__"}, "a", "a", true},
-		{"pkg, other package", []string{"//a:__pkg__"}, "x", "b", false},
-		{"package group is unknown", []string{"//groups:friends"}, "a", "b", false},
-		{"other repo", []string{"@other//:__subpackages__"}, "a", "b", false},
+		{"internal, inside its tree", []string{"//lib:__subpackages__"}, "lib/internal/x", "lib/y", true},
+		{"internal, the tree root itself", []string{"//lib:__subpackages__"}, "lib/internal/x", "lib", true},
+		{"internal, sibling prefix", []string{"//lib:__subpackages__"}, "lib/internal/x", "library", false},
+		{"internal, outside its tree", []string{"//lib:__subpackages__"}, "lib/internal/x", "app", false},
+		{"repo-root internal", []string{"//:__subpackages__"}, "internal/x", "anything", true},
+		{"subpackages not matching the internal rule", []string{"//lib:__subpackages__"}, "lib/x", "lib/y", false},
+		{"private is not recognised", []string{"//visibility:private"}, "a", "a", false},
+		{"package group is not recognised", []string{"//groups:friends"}, "a", "b", false},
+		{"no visibility", nil, "a", "b", false},
+		{"several entries are not recognised", []string{"//visibility:public", "//a:__pkg__"}, "a", "b", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := visibleFrom(tt.vis, "", tt.nodePkg, tt.fromPkg); got != tt.want {
-				t.Errorf("visibleFrom(%v, %q, %q) = %v, want %v", tt.vis, tt.nodePkg, tt.fromPkg, got, tt.want)
+			n := &depNode{label: label.New("", tt.nodePkg, "x"), visibility: tt.vis}
+			if got := n.canSee(tt.fromPkg); got != tt.want {
+				t.Errorf("canSee(%v in %q from %q) = %v, want %v", tt.vis, tt.nodePkg, tt.fromPkg, got, tt.want)
 			}
 		})
 	}
@@ -397,13 +398,13 @@ gala_library(name = "a", importpath = "martianoff/gala/a")
 	bare := rule.EmptyFile("b/BUILD.bazel", "b")
 	r := rule.NewRule("gala_library", "b")
 	r.Insert(bare)
-	if got, want := ruleVisibility(r, bare), []string{"//visibility:private"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("ruleVisibility = %v, want %v", got, want)
+	if got := ruleVisibility(r, bare); got != nil {
+		t.Errorf("ruleVisibility = %v, want nil", got)
 	}
 }
 
 func TestGeneratedLibraryCarriesImports(t *testing.T) {
-	gl := &galaLang{runner: fakeRunner}
+	gl := &galaLang{runner: fakeRunner, graph: newDepGraph()}
 	c := testConfig()
 	res := gl.GenerateRules(genArgs(c, "regexlike", []string{"regex.gala"}))
 	if len(res.Gen) == 0 || res.Gen[0].Kind() != "gala_library" {

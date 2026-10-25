@@ -33,19 +33,11 @@ type galaLang struct {
 	graph *depGraph
 }
 
-// dependencyGraph returns the dependency graph, creating it on first use.
-func (gl *galaLang) dependencyGraph() *depGraph {
-	if gl.graph == nil {
-		gl.graph = newDepGraph()
-	}
-	return gl.graph
-}
-
 // newGalaLang constructs the GALA-only half of the extension. The public
 // NewLanguage entry point (composite.go) wraps it together with the embedded
 // gazelle-go language.
 func newGalaLang() *galaLang {
-	return &galaLang{runner: execRunner}
+	return &galaLang{runner: execRunner, graph: newDepGraph()}
 }
 
 var (

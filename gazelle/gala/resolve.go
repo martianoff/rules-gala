@@ -23,7 +23,7 @@ const goLangExtKey = "go"
 // gala_test are not importable, so they are not indexed (return nil).
 //
 // It also records the library's own dependencies, which Resolve walks to add
-// transitive GALA deps (see transitive.go).
+// transitive GALA deps.
 func (gl *galaLang) Imports(c *config.Config, r *rule.Rule, f *rule.File) []resolve.ImportSpec {
 	if r.Kind() != "gala_library" {
 		return nil
@@ -32,7 +32,7 @@ func (gl *galaLang) Imports(c *config.Config, r *rule.Rule, f *rule.File) []reso
 	if importpath == "" {
 		return nil
 	}
-	gl.dependencyGraph().record(c, r, f, importpath)
+	gl.graph.record(c, r, f, importpath)
 	return []resolve.ImportSpec{{Lang: languageName, Imp: importpath}}
 }
 
@@ -58,6 +58,7 @@ func (gl *galaLang) Resolve(
 
 	deps := map[string]bool{}
 	galaDeps := map[string]bool{}
+	var roots []string
 	for _, imp := range gi.imports {
 		if imp == gi.self {
 			continue
@@ -66,17 +67,13 @@ func (gl *galaLang) Resolve(
 			// Injected automatically by the gala_* macros (std, test).
 			continue
 		}
-		// An explicit `# gazelle:resolve gala <imp> <label>` names a GALA
-		// library that the transpiler can't find on its search path — i.e. a
-		// library from ANOTHER Bazel module (the in-repo and @gala stdlib libs
-		// resolve automatically below). Such a dep must go in gala_deps so its
-		// sources are available at transpile time, not just deps.
-		if l, ok := resolve.FindRuleWithOverride(c, resolve.ImportSpec{Lang: languageName, Imp: imp}, languageName); ok {
-			galaDeps[l.Rel(from.Repo, from.Pkg).String()] = true
-			continue
-		}
-		lbl, ok := resolveImport(gc, ix, imp, from)
-		if !ok {
+		roots = append(roots, imp)
+		switch lbl, kind := classifyImport(c, gc, ix, imp, from); kind {
+		case depOverride:
+			galaDeps[lbl] = true
+		case depIndexed, depInRepo, depStdlib:
+			deps[lbl] = true
+		default:
 			// Not a GALA import. In a mixed package the go_srcs reference Go
 			// stdlib / in-repo Go / third-party Go; defer to gazelle-go's
 			// resolver (available only in composite mode). Go stdlib resolves
@@ -84,28 +81,37 @@ func (gl *galaLang) Resolve(
 			if l, gok := resolveGoImport(c, ix, rc, imp, from); gok {
 				deps[l] = true
 			}
-			continue
 		}
-		deps[lbl] = true
 	}
 
-	// Types reachable through a GALA dep's API can be named in this rule's
-	// generated Go, so its GALA deps' own GALA deps become direct deps too.
-	// The rule's own package is never its own dep: a library's importpath, or
-	// the package an internal test compiles in via lib_srcs.
-	exclude := map[string]bool{}
-	for _, own := range []string{gi.self, r.AttrString("importpath")} {
-		if own != "" {
-			exclude[own] = true
+	// Add the GALA deps' own GALA deps, transitively (README.md "Transitive
+	// GALA deps"). Plain Go deps are not propagated. The rule's own package is
+	// never its own dep: a library's importpath, or the package an internal
+	// test compiles in via lib_srcs.
+	exclude := map[string]bool{gi.self: true, r.AttrString("importpath"): true}
+	for _, root := range roots {
+		cl := gl.graph.reachable(root)
+		for _, l := range cl.galaLeaves {
+			galaDeps[l.Rel(from.Repo, from.Pkg).String()] = true
+		}
+		for _, imp := range cl.imports {
+			if exclude[imp] || gc.ImplicitDeps[imp] {
+				continue
+			}
+			switch lbl, kind := classifyImport(c, gc, ix, imp, from); kind {
+			case depOverride:
+				galaDeps[lbl] = true
+			case depIndexed:
+				if n := gl.graph.nodes[imp]; n != nil && n.canSee(from.Pkg) {
+					deps[lbl] = true
+				}
+			case depStdlib:
+				deps[lbl] = true
+			}
+			// depInRepo (unindexed) is skipped: it can't be told apart from an
+			// in-repo Go package.
 		}
 	}
-	var roots []string
-	for _, imp := range gi.imports {
-		if !exclude[imp] && !gc.ImplicitDeps[imp] {
-			roots = append(roots, imp)
-		}
-	}
-	gl.dependencyGraph().addTransitiveDeps(c, gc, roots, exclude, from, deps, galaDeps)
 
 	setSortedAttr(r, "deps", deps)
 	setSortedAttr(r, "gala_deps", galaDeps)
@@ -126,29 +132,56 @@ func setSortedAttr(r *rule.Rule, attr string, set map[string]bool) {
 	r.SetAttr(attr, sorted)
 }
 
-// resolveImport maps a single GALA import path to a Bazel label string. It
-// reports ok=false for imports that need no GALA dependency (Go stdlib and
-// other non-GALA paths).
-func resolveImport(gc *galaConfig, ix *resolve.RuleIndex, imp string, from label.Label) (string, bool) {
-	// Prefer an in-repo library indexed under this importpath.
+// depKind says how classifyImport resolved an import path.
+type depKind int
+
+const (
+	// depNone: not a GALA import (Go stdlib, other Go paths).
+	depNone depKind = iota
+	// depOverride: an explicit `# gazelle:resolve gala <imp> <label>`. It
+	// names a GALA library the transpiler can't find on its search path — a
+	// library from ANOTHER Bazel module — so it goes in gala_deps, which puts
+	// its sources on the search path, not just in deps.
+	depOverride
+	// depIndexed: an in-repo gala_library indexed under this importpath.
+	depIndexed
+	// depInRepo: under the in-repo prefix but not indexed → //<relpath>.
+	depInRepo
+	// depStdlib: GALA stdlib namespace not present in-repo → @<repo>//<relpath>.
+	depStdlib
+)
+
+// classifyImport maps a GALA import path to a Bazel label string (relative to
+// from) and says what kind of dep it is. Lookup order: override, index,
+// in-repo prefix, stdlib namespace.
+func classifyImport(c *config.Config, gc *galaConfig, ix *resolve.RuleIndex, imp string, from label.Label) (string, depKind) {
+	if l, ok := resolve.FindRuleWithOverride(c, resolve.ImportSpec{Lang: languageName, Imp: imp}, languageName); ok {
+		return l.Rel(from.Repo, from.Pkg).String(), depOverride
+	}
 	if matches := ix.FindRulesByImport(resolve.ImportSpec{Lang: languageName, Imp: imp}, languageName); len(matches) > 0 {
-		return matches[0].Label.Rel(from.Repo, from.Pkg).String(), true
+		return matches[0].Label.Rel(from.Repo, from.Pkg).String(), depIndexed
 	}
-
-	// In-repo namespace: under the configured prefix → //<relpath>.
 	if rel, ok := relUnder(imp, gc.Prefix); ok && rel != "" {
-		lbl := label.New("", rel, path.Base(rel))
-		return lbl.Rel(from.Repo, from.Pkg).String(), true
+		return label.New("", rel, path.Base(rel)).Rel(from.Repo, from.Pkg).String(), depInRepo
 	}
-
-	// GALA stdlib namespace not present in-repo → @<repo>//<relpath>.
 	if rel, ok := relUnder(imp, gc.StdlibPrefix); ok && rel != "" {
-		lbl := label.New(gc.StdlibRepo, rel, path.Base(rel))
-		return lbl.String(), true
+		return stdlibLabel(gc, rel).String(), depStdlib
 	}
+	return "", depNone
+}
 
-	// Go stdlib / external Go imports: no GALA dependency.
-	return "", false
+// stdlibLabel is the label of the GALA stdlib package at rel in the external
+// stdlib repo: @<repo>//<rel>:<base>. stdlibImport is its inverse.
+func stdlibLabel(gc *galaConfig, rel string) label.Label {
+	return label.New(gc.StdlibRepo, rel, path.Base(rel))
+}
+
+// stdlibImport maps a stdlibLabel back to its import path.
+func stdlibImport(gc *galaConfig, l label.Label) (string, bool) {
+	if l.Repo != gc.StdlibRepo || l.Pkg == "" || l.Name != path.Base(l.Pkg) {
+		return "", false
+	}
+	return gc.StdlibPrefix + "/" + l.Pkg, true
 }
 
 // resolveGoImport maps a non-GALA import to its Bazel label using gazelle-go's
