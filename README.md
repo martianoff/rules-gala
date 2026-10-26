@@ -217,6 +217,14 @@ The naming lives in one function,
 [`galop/private/naming.bzl`](galop/private/naming.bzl) (also exported as
 `galop_go_outputs` from `defs.bzl`).
 
+### Testing against a real galop
+
+`galop_parser`'s tests in `//galop/tests` use a fake galop, so `bazel test
+//...` needs no download. [`e2e/galop`](e2e/galop) is a separate module that
+generates a grammar in both flavors with the real galop release from
+`versions.bzl` and builds and runs the native parser. Run it by hand with
+`cd e2e/galop && bazel test //...`.
+
 ### Why a prebuilt binary rather than building galop from source
 
 The toolchain from the `galop` extension uses galop's **release binaries**, not
