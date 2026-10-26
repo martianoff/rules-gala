@@ -23,8 +23,6 @@ def _galop_parser_impl(ctx):
         grammar_name = grammar_name,
         kind = ctx.attr.kind,
         flavor = ctx.attr.flavor,
-        listener = ctx.attr.listener,
-        visitor = ctx.attr.visitor,
     )
 
     # Outputs live in a directory named after the target, so several
@@ -39,8 +37,6 @@ def _galop_parser_impl(ctx):
     args.add("-Dflavor=" + ctx.attr.flavor)
     if ctx.attr.package:
         args.add("-package", ctx.attr.package)
-    args.add("-listener" if ctx.attr.listener else "-no-listener")
-    args.add("-visitor" if ctx.attr.visitor else "-no-visitor")
     for key, value in sorted(ctx.attr.defines.items()):
         args.add("-D%s=%s" % (key, value))
     args.add_all(ctx.attr.galop_opts)
@@ -96,20 +92,18 @@ file name. Because Bazel must know the output file names before galop runs,
                   "Empty means galop's default.",
         ),
         "flavor": attr.string(
-            default = "companion",
+            default = "native",
             values = FLAVORS,
-            doc = "galop's Go output flavor (`-Dflavor`). `companion` " +
-                  "generates code that sits next to ANTLR's own generated " +
-                  "package; `standalone` also generates the listener and " +
-                  "visitor files.",
-        ),
-        "listener": attr.bool(
-            default = True,
-            doc = "Generate a parse-tree listener (`-listener` / `-no-listener`).",
-        ),
-        "visitor": attr.bool(
-            default = False,
-            doc = "Generate a parse-tree visitor (`-visitor` / `-no-visitor`).",
+            doc = "galop's Go output flavor (`-Dflavor`). `native` (the " +
+                  "default) generates a parser with galop's own compact " +
+                  "tokens and tree and no dependencies, in `<base>_parser.go` " +
+                  "and `<base>_lexer.go`. `antlr` generates a parser that " +
+                  "builds ANTLR's own context types, for code written against " +
+                  "ANTLR's trees: it needs ANTLR's Go runtime and ANTLR's " +
+                  "generated code in the same package, and writes " +
+                  "`<base>_galop_parser.go` and `<base>_galop_lexer.go` so it " +
+                  "can sit next to them. Neither flavor generates a listener " +
+                  "or visitor.",
         ),
         "defines": attr.string_dict(
             doc = "Extra grammar options passed as `-D<key>=<value>`. " +
