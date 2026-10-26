@@ -1,5 +1,7 @@
 parser grammar CalcParser;
 
-options { tokenVocab = CalcLexer; }
+// galop does not support tokenVocab yet, so the tokens are declared here, in
+// CalcLexer.g4's order.
+tokens { PLUS, INT }
 
-expr : expr PLUS expr | INT ;
+expr : INT (PLUS INT)* ;

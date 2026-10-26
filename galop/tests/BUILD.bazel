@@ -48,7 +48,6 @@ galop_parser(
 galop_parser(
     name = "split_parser",
     grammar = "CalcParser.g4",
-    imports = ["CalcLexer.g4"],
     kind = "parser",
     package = "split",
 )
@@ -101,7 +100,6 @@ galop_parser(
     name = "split_antlr_parser",
     flavor = "antlr",
     grammar = "CalcParser.g4",
-    imports = ["CalcLexer.g4"],
     kind = "parser",
     package = "splitantlr",
 )
