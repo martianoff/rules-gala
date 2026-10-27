@@ -124,7 +124,7 @@ In your `MODULE.bazel`:
 bazel_dep(name = "rules_gala", version = "<version>")
 
 galop = use_extension("@rules_gala//galop:extensions.bzl", "galop")
-galop.toolchain(version = "0.1.0")
+galop.toolchain(version = "0.2.1")
 use_repo(galop, "galop_toolchains")
 register_toolchains("@galop_toolchains//:all")
 ```
@@ -260,22 +260,6 @@ toolchain(
 ```
 
 and `register_toolchains("//path/to:galop_from_source")` in `MODULE.bazel`.
-
-### Status: waiting for the first galop release
-
-galop has not published a release yet, so the checksum table in
-`galop/private/versions.bzl` is empty and `galop.toolchain(version = ...)`
-fails with a message listing exactly what to add. Before the extension works
-out of the box:
-
-1. galop publishes its first release (bare semver tag such as `0.1.0`, with
-   `galop-linux-amd64`, `galop-darwin-arm64`, `galop-windows-amd64.exe` and
-   `checksums-sha256.txt`).
-2. Its three hashes are added to `GALOP_VERSIONS` in
-   `galop/private/versions.bzl`.
-3. A rules_gala release ships that table (see [RELEASING.md](RELEASING.md)).
-
-Until then a custom toolchain, or `galop.toolchain(sha256 = {...})`, works.
 
 The rule itself is tested in [`galop/tests`](galop/tests) against a fake galop
 (`bazel test //galop/...`).
