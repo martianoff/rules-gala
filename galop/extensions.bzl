@@ -1,7 +1,7 @@
 """Bzlmod extension that registers prebuilt galop binaries as toolchains.
 
     galop = use_extension("@rules_gala//galop:extensions.bzl", "galop")
-    galop.toolchain(version = "0.2.1")
+    galop.toolchain(version = "0.2.2")
     use_repo(galop, "galop_toolchains")
     register_toolchains("@galop_toolchains//:all")
 
