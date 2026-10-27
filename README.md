@@ -30,8 +30,8 @@ Use [Bazelisk](https://github.com/bazelbuild/bazelisk) and pin the version in a
 In your `MODULE.bazel`:
 
 ```starlark
-bazel_dep(name = "rules_gala", version = "0.1.0")
-bazel_dep(name = "gala", version = "1.0.0")
+bazel_dep(name = "rules_gala", version = "0.6.0")
+bazel_dep(name = "gala", version = "0.93.2")
 
 # Register the toolchain shipped by the `gala` language module.
 register_toolchains("@gala//tools/toolchain:gala_toolchain")
