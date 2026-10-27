@@ -1,11 +1,11 @@
 // Command fake_galop stands in for the real galop in rules_gala's tests.
 //
 // It accepts the command line galop_parser produces, checks it the way galop
-// would (grammar name equals file name, -o with -Xexact-output-dir), and
-// writes the files galop's Go target would write, each holding a trivial but
-// compilable Go declaration. The output naming is re-implemented here on
-// purpose: if galop_parser declared different files than this writes, Bazel
-// fails the action.
+// would (grammar name equals file name, -o with -Xexact-output-dir, a known
+// flavor), and writes the files galop's Go target would write, each holding a
+// trivial but compilable Go declaration. The output naming is re-implemented
+// here on purpose: if galop_parser declared different files than this writes,
+// Bazel fails the action.
 package main
 
 import (
@@ -18,16 +18,29 @@ import (
 
 var grammarDecl = regexp.MustCompile(`(?m)^\s*(lexer\s+|parser\s+)?grammar\s+([A-Za-z_][A-Za-z0-9_]*)\s*;`)
 
+// flavors are galop's Go flavors; the first is the default.
+var flavors = []string{"native", "antlr"}
+
+// usageError is a problem galop reports in its own words, printed as is.
+type usageError string
+
+func (e usageError) Error() string { return string(e) }
+
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintf(os.Stderr, "error(fake_galop): %v\n", err)
+		if u, ok := err.(usageError); ok {
+			fmt.Fprintln(os.Stderr, string(u))
+		} else {
+			fmt.Fprintf(os.Stderr, "error(fake_galop): %v\n", err)
+		}
 		os.Exit(1)
 	}
 }
 
 func run(args []string) error {
-	var outDir, pkg, flavor, language string
-	exact, listener, visitor := false, true, false
+	var outDir, pkg, language string
+	flavor := flavors[0]
+	exact := false
 	var grammars []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -44,14 +57,9 @@ func run(args []string) error {
 			}
 		case a == "-Xexact-output-dir":
 			exact = true
-		case a == "-listener":
-			listener = true
-		case a == "-no-listener":
-			listener = false
-		case a == "-visitor":
-			visitor = true
-		case a == "-no-visitor":
-			visitor = false
+		case a == "-listener" || a == "-no-listener" || a == "-visitor" || a == "-no-visitor":
+			// Accepted for ANTLR compatibility; galop generates no listener
+			// or visitor in any flavor.
 		case strings.HasPrefix(a, "-D"):
 			kv := strings.SplitN(a[2:], "=", 2)
 			if len(kv) != 2 {
@@ -75,16 +83,27 @@ func run(args []string) error {
 	if language != "Go" {
 		return fmt.Errorf("expected -Dlanguage=Go, got %q", language)
 	}
-	if flavor == "" {
-		flavor = "companion"
+	if !known(flavor) {
+		// galop's error 508, in its default (antlr) message format; it
+		// writes no files.
+		return usageError(fmt.Sprintf("error(508):  unknown Go flavor %s (supported: %s)", flavor, strings.Join(flavors, ", ")))
 	}
 	if len(grammars) != 1 {
 		return fmt.Errorf("expected exactly one grammar, got %v", grammars)
 	}
-	return generate(grammars[0], outDir, pkg, flavor, listener, visitor)
+	return generate(grammars[0], outDir, pkg, flavor)
 }
 
-func generate(path, outDir, pkg, flavor string, listener, visitor bool) error {
+func known(flavor string) bool {
+	for _, f := range flavors {
+		if f == flavor {
+			return true
+		}
+	}
+	return false
+}
+
+func generate(path, outDir, pkg, flavor string) error {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -105,28 +124,25 @@ func generate(path, outDir, pkg, flavor string, listener, visitor bool) error {
 	case "lexer":
 		base = trim(base, "Lexer")
 	}
-	base = strings.ToLower(base)
 	if pkg == "" {
-		pkg = base
+		pkg = strings.ToLower(base)
+	}
+
+	// The antlr flavor's files carry `_galop` so they can sit next to
+	// ANTLR's own; the native flavor's are named like ANTLR's.
+	fileBase, prefix := strings.ToLower(base), base
+	if flavor == "antlr" {
+		fileBase += "_galop"
+		prefix += "Galop"
 	}
 
 	// file name -> exported identifier it declares
 	files := map[string]string{}
 	if kind != "lexer" {
-		files[base+"_galop_parser.go"] = name + "GalopParser"
+		files[fileBase+"_parser.go"] = prefix + "ParserFile"
 	}
 	if kind != "parser" {
-		files[base+"_galop_lexer.go"] = name + "GalopLexer"
-	}
-	if flavor == "standalone" && kind != "lexer" {
-		if listener {
-			files[base+"_listener.go"] = name + "Listener"
-			files[base+"_base_listener.go"] = name + "BaseListener"
-		}
-		if visitor {
-			files[base+"_visitor.go"] = name + "Visitor"
-			files[base+"_base_visitor.go"] = name + "BaseVisitor"
-		}
+		files[fileBase+"_lexer.go"] = prefix + "LexerFile"
 	}
 
 	for file, ident := range files {

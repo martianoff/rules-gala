@@ -1,6 +1,6 @@
 grammar Expr;
 
-expr : expr '*' expr | ID ;
+expr : ID ('*' ID)* ;
 
 ID : [a-z]+ ;
 WS : [ \t\r\n]+ -> skip ;

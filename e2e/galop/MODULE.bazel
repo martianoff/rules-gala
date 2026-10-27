@@ -1,0 +1,28 @@
+"""End-to-end check of galop_parser with a real galop release.
+
+Not part of rules_gala's own `bazel test //...` (the root .bazelignore skips
+e2e/): it downloads galop from GitHub, so it is run by hand, from this
+directory:
+
+    bazel test //...
+
+It uses this checkout of rules_gala and the galop version below, resolved
+through the `galop` extension and the checksums in
+//galop/private:versions.bzl.
+"""
+
+module(name = "rules_gala_galop_e2e")
+
+bazel_dep(name = "rules_gala")
+local_path_override(
+    module_name = "rules_gala",
+    path = "../..",
+)
+
+bazel_dep(name = "rules_go", version = "0.59.0")
+
+galop = use_extension("@rules_gala//galop:extensions.bzl", "galop")
+galop.toolchain(version = "0.2.1")
+use_repo(galop, "galop_toolchains")
+
+register_toolchains("@galop_toolchains//:all")

@@ -23,11 +23,9 @@ def _command_line_test_impl(ctx):
     asserts.equals(env, [
         "-Xexact-output-dir",
         "-Dlanguage=Go",
-        "-Dflavor=companion",
+        "-Dflavor=antlr",
         "-package",
         "calcpkg",
-        "-no-listener",
-        "-visitor",
         "-DcontextSuperClass=MyCtx",
         "-DsuperClass=MyBase",
         "-Werror",
@@ -47,11 +45,18 @@ _command_line_test = analysistest.make(_command_line_test_impl)
 
 def _minimal_command_line_test_impl(ctx):
     env = analysistest.begin(ctx)
+    target = analysistest.target_under_test(env)
     actions = [a for a in analysistest.target_actions(env) if a.mnemonic == "GalopGenerate"]
     argv = actions[0].argv
+    asserts.true(env, "-Dflavor=native" in argv, "native is the default flavor")
     asserts.false(env, "-package" in argv, "no -package when package is empty")
-    asserts.true(env, "-listener" in argv, "listener is on by default")
-    asserts.true(env, "-no-visitor" in argv, "visitor is off by default")
+    for flag in ["-listener", "-no-listener", "-visitor", "-no-visitor"]:
+        asserts.false(env, flag in argv, "%s is not passed: it adds no files" % flag)
+    asserts.equals(
+        env,
+        ["calc_parser.go", "calc_lexer.go"],
+        _basenames(target[DefaultInfo].files.to_list()),
+    )
     return analysistest.end(env)
 
 _minimal_command_line_test = analysistest.make(_minimal_command_line_test_impl)
@@ -66,34 +71,32 @@ _reserved_define_test = analysistest.make(_reserved_define_test_impl, expect_fai
 def _naming_test_impl(ctx):
     env = unittest.begin(ctx)
     cases = [
-        # (grammar name, kind, flavor, listener, visitor, expected)
-        ("Calc", "combined", "companion", True, True, ["calc_galop_parser.go", "calc_galop_lexer.go"]),
-        ("CalcParser", "parser", "companion", True, False, ["calc_galop_parser.go"]),
-        ("CalcLexer", "lexer", "companion", True, False, ["calc_galop_lexer.go"]),
+        # (grammar name, kind, flavor, expected)
+        ("Calc", "combined", "native", ["calc_parser.go", "calc_lexer.go"]),
+        ("CalcParser", "parser", "native", ["calc_parser.go"]),
+        ("CalcLexer", "lexer", "native", ["calc_lexer.go"]),
+        ("Calc", "combined", "antlr", ["calc_galop_parser.go", "calc_galop_lexer.go"]),
+        ("CalcParser", "parser", "antlr", ["calc_galop_parser.go"]),
+        ("CalcLexer", "lexer", "antlr", ["calc_galop_lexer.go"]),
         # Only a trailing suffix of the matching kind is trimmed.
-        ("CalcParser", "combined", "companion", True, False, ["calcparser_galop_parser.go", "calcparser_galop_lexer.go"]),
-        ("CalcLexer", "parser", "companion", True, False, ["calclexer_galop_parser.go"]),
-        ("Parser", "parser", "companion", True, False, ["parser_galop_parser.go"]),
-        ("Expr", "combined", "standalone", True, False, [
-            "expr_galop_parser.go",
-            "expr_galop_lexer.go",
-            "expr_listener.go",
-            "expr_base_listener.go",
-        ]),
-        ("ExprParser", "parser", "standalone", False, True, [
-            "expr_galop_parser.go",
-            "expr_visitor.go",
-            "expr_base_visitor.go",
-        ]),
-        ("ExprLexer", "lexer", "standalone", True, True, ["expr_galop_lexer.go"]),
+        ("CalcParser", "combined", "native", ["calcparser_parser.go", "calcparser_lexer.go"]),
+        ("CalcLexer", "parser", "native", ["calclexer_parser.go"]),
+        ("CalcParser", "combined", "antlr", ["calcparser_galop_parser.go", "calcparser_galop_lexer.go"]),
+        ("CalcLexer", "parser", "antlr", ["calclexer_galop_parser.go"]),
+        # A name that is only the suffix is kept.
+        ("Parser", "parser", "native", ["parser_parser.go"]),
+        ("Lexer", "lexer", "antlr", ["lexer_galop_lexer.go"]),
     ]
-    for name, kind, flavor, listener, visitor, want in cases:
+    for name, kind, flavor, want in cases:
         asserts.equals(
             env,
             want,
-            galop_go_outputs(name, kind, flavor, listener, visitor),
-            "%s %s %s listener=%s visitor=%s" % (name, kind, flavor, listener, visitor),
+            galop_go_outputs(name, kind, flavor),
+            "%s %s %s" % (name, kind, flavor),
         )
+
+    # native is the default flavor.
+    asserts.equals(env, ["expr_parser.go", "expr_lexer.go"], galop_go_outputs("Expr", "combined"))
     return unittest.end(env)
 
 _naming_test = unittest.make(_naming_test_impl)
@@ -108,8 +111,7 @@ def galop_parser_test_suite(name):
         name = "args_parser",
         grammar = "Calc.g4",
         package = "calcpkg",
-        listener = False,
-        visitor = True,
+        flavor = "antlr",
         defines = {"superClass": "MyBase", "contextSuperClass": "MyCtx"},
         galop_opts = ["-Werror", "-message-format", "gnu"],
         tags = ["manual"],
@@ -126,7 +128,7 @@ def galop_parser_test_suite(name):
     galop_parser(
         name = "reserved_define_parser",
         grammar = "Calc.g4",
-        defines = {"flavor": "standalone"},
+        defines = {"flavor": "antlr"},
         tags = ["manual"],
     )
     _reserved_define_test(name = name + "_reserved_define", target_under_test = ":reserved_define_parser")

@@ -1,0 +1,37 @@
+load("@rules_gala//galop:defs.bzl", "galop_parser")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+# native flavor: no dependencies, so the generated parser is built and run.
+galop_parser(
+    name = "calc_native",
+    grammar = "Calc.g4",
+    package = "calc",
+)
+
+go_library(
+    name = "calc",
+    srcs = [":calc_native"],
+    importpath = "github.com/martianoff/rules-gala/e2e/galop/calc",
+)
+
+go_test(
+    name = "calc_native_test",
+    srcs = ["calc_native_test.go"],
+    embed = [":calc"],
+)
+
+# antlr flavor: the generated code needs ANTLR's Go runtime and ANTLR's own
+# generated parser in the same package, so only the generation is checked.
+galop_parser(
+    name = "calc_antlr",
+    flavor = "antlr",
+    grammar = "Calc.g4",
+    package = "calc",
+)
+
+go_test(
+    name = "calc_antlr_test",
+    srcs = ["calc_antlr_test.go"],
+    data = [":calc_antlr"],
+    env = {"CALC_ANTLR_FILES": "$(rootpaths :calc_antlr)"},
+)

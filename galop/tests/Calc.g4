@@ -1,6 +1,6 @@
 grammar Calc;
 
-expr : expr (PLUS | MINUS) expr | INT ;
+expr : INT ((PLUS | MINUS) INT)* ;
 
 PLUS  : '+' ;
 MINUS : '-' ;

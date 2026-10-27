@@ -124,7 +124,7 @@ In your `MODULE.bazel`:
 bazel_dep(name = "rules_gala", version = "<version>")
 
 galop = use_extension("@rules_gala//galop:extensions.bzl", "galop")
-galop.toolchain(version = "0.1.0")
+galop.toolchain(version = "0.2.1")
 use_repo(galop, "galop_toolchains")
 register_toolchains("@galop_toolchains//:all")
 ```
@@ -167,7 +167,7 @@ The rule runs
 
 ```
 galop -o <dir> -Xexact-output-dir -Dlanguage=Go -Dflavor=<flavor> [-package <p>]
-      -listener|-no-listener -visitor|-no-visitor [-D<k>=<v> ...] [galop_opts ...] <grammar>
+      [-D<k>=<v> ...] [galop_opts ...] <grammar>
 ```
 
 | Attribute    | Default       | Meaning                                                                                                  |
@@ -175,9 +175,7 @@ galop -o <dir> -Xexact-output-dir -Dlanguage=Go -Dflavor=<flavor> [-package <p>]
 | `grammar`    | (required)    | The `.g4` file. Its base name must equal the grammar name (`Calc.g4` → `grammar Calc;`), as galop enforces. |
 | `kind`       | `"combined"`  | `combined` (`grammar T;`), `lexer` (`lexer grammar TLexer;`) or `parser` (`parser grammar TParser;`).      |
 | `package`    | `""`          | Go package of the generated code (`-package`); empty leaves galop's default.                             |
-| `flavor`     | `"companion"` | `-Dflavor`: `companion` or `standalone`.                                                                  |
-| `listener`   | `True`        | `-listener` / `-no-listener`.                                                                             |
-| `visitor`    | `False`       | `-visitor` / `-no-visitor`.                                                                               |
+| `flavor`     | `"native"`    | `-Dflavor`: `native` or `antlr` (see [Flavors](#flavors)).                                                |
 | `defines`    | `{}`          | Extra `-D<key>=<value>` options. `language` and `flavor` are rejected: the rule sets them.               |
 | `galop_opts` | `[]`          | Extra raw arguments (e.g. `["-Werror"]`), placed before the grammar.                                      |
 | `imports`    | `[]`          | Other `.g4` / `.tokens` files the grammar imports or names in `tokenVocab`, declared as action inputs. galop does not support `import` or `tokenVocab` yet (it reports error 500), so this is for when it does. |
@@ -186,23 +184,46 @@ galop -o <dir> -Xexact-output-dir -Dlanguage=Go -Dflavor=<flavor> [-package <p>]
 action runs, and which files galop writes depends on the kind of grammar,
 which the rule cannot see without reading the file.
 
+There is no `listener` or `visitor` attribute: galop accepts ANTLR's
+`-listener` and `-visitor` options for compatibility, but no flavor generates
+a listener or visitor, so the rule does not pass them.
+
+### Flavors
+
+galop's Go target writes one of two kinds of parser:
+
+- **`native`** (the default): galop's own compact tokens and parse tree, with
+  typed accessors per rule and no dependencies. Use it for new code.
+- **`antlr`**: a parser that builds ANTLR's own context types, for code already
+  written against ANTLR's trees, such as ANTLR listeners and visitors. It
+  needs ANTLR's Go runtime and ANTLR's generated code in the same Go package,
+  so put ANTLR's output and this target in the same `go_library`.
+
 ### Output files
 
 The prefix is the grammar name lowercased; for a `parser` grammar a trailing
 `Parser` is trimmed, for a `lexer` grammar a trailing `Lexer` (as in ANTLR's
-Go target). Files are written to a directory named after the target.
+Go target). The `native` flavor's files are named like ANTLR's; the `antlr`
+flavor adds `_galop` so its files can sit next to ANTLR's. Files are written to
+a directory named after the target.
 
-| Grammar                    | `companion`                                  | `standalone` adds (parser and combined grammars only)                                                 |
-|----------------------------|----------------------------------------------|--------------------------------------------------------------------------------------------------------|
-| `grammar Calc;`            | `calc_galop_parser.go`, `calc_galop_lexer.go` | `calc_listener.go`, `calc_base_listener.go` (with `listener`); `calc_visitor.go`, `calc_base_visitor.go` (with `visitor`) |
-| `parser grammar CalcParser;` | `calc_galop_parser.go`                      | as above                                                                                               |
-| `lexer grammar CalcLexer;` | `calc_galop_lexer.go`                        | nothing                                                                                                |
+| Grammar                      | `native`                          | `antlr`                                       |
+|------------------------------|-----------------------------------|-----------------------------------------------|
+| `grammar Calc;`              | `calc_parser.go`, `calc_lexer.go` | `calc_galop_parser.go`, `calc_galop_lexer.go` |
+| `parser grammar CalcParser;` | `calc_parser.go`                  | `calc_galop_parser.go`                        |
+| `lexer grammar CalcLexer;`   | `calc_lexer.go`                   | `calc_galop_lexer.go`                         |
 
-In the `companion` flavor the generated code sits next to ANTLR's own
-generated package, which already has the listener and visitor, so those flags
-add no files. The naming lives in one function,
+The naming lives in one function,
 [`galop/private/naming.bzl`](galop/private/naming.bzl) (also exported as
 `galop_go_outputs` from `defs.bzl`).
+
+### Testing against a real galop
+
+`galop_parser`'s tests in `//galop/tests` use a fake galop, so `bazel test
+//...` needs no download. [`e2e/galop`](e2e/galop) is a separate module that
+generates a grammar in both flavors with the real galop release from
+`versions.bzl` and builds and runs the native parser. Run it by hand with
+`cd e2e/galop && bazel test //...`.
 
 ### Why a prebuilt binary rather than building galop from source
 
@@ -239,22 +260,6 @@ toolchain(
 ```
 
 and `register_toolchains("//path/to:galop_from_source")` in `MODULE.bazel`.
-
-### Status: waiting for the first galop release
-
-galop has not published a release yet, so the checksum table in
-`galop/private/versions.bzl` is empty and `galop.toolchain(version = ...)`
-fails with a message listing exactly what to add. Before the extension works
-out of the box:
-
-1. galop publishes its first release (bare semver tag such as `0.1.0`, with
-   `galop-linux-amd64`, `galop-darwin-arm64`, `galop-windows-amd64.exe` and
-   `checksums-sha256.txt`).
-2. Its three hashes are added to `GALOP_VERSIONS` in
-   `galop/private/versions.bzl`.
-3. A rules_gala release ships that table (see [RELEASING.md](RELEASING.md)).
-
-Until then a custom toolchain, or `galop.toolchain(sha256 = {...})`, works.
 
 The rule itself is tested in [`galop/tests`](galop/tests) against a fake galop
 (`bazel test //galop/...`).

@@ -1,7 +1,7 @@
 """Bzlmod extension that registers prebuilt galop binaries as toolchains.
 
     galop = use_extension("@rules_gala//galop:extensions.bzl", "galop")
-    galop.toolchain(version = "0.1.0")
+    galop.toolchain(version = "0.2.1")
     use_repo(galop, "galop_toolchains")
     register_toolchains("@galop_toolchains//:all")
 
@@ -194,7 +194,7 @@ _toolchain_tag = tag_class(
     attrs = {
         "version": attr.string(
             mandatory = True,
-            doc = "galop release version: a bare semver tag such as `0.1.0`.",
+            doc = "galop release version: a bare semver tag such as `0.2.1`.",
         ),
         "sha256": attr.string_dict(
             doc = "Per-platform SHA-256 hashes (`darwin_arm64`, " +

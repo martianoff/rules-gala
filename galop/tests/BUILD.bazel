@@ -18,7 +18,7 @@ toolchain(
     toolchain_type = "//galop:toolchain_type",
 )
 
-# Combined grammar, companion flavor (the defaults).
+# Combined grammar, native flavor (the default).
 galop_parser(
     name = "calc_parser",
     grammar = "Calc.g4",
@@ -37,7 +37,7 @@ go_test(
     embed = [":calc"],
 )
 
-# Separate lexer and parser grammars generating into one package.
+# Separate lexer and parser grammars generating into one package, native flavor.
 galop_parser(
     name = "split_lexer",
     grammar = "CalcLexer.g4",
@@ -48,7 +48,6 @@ galop_parser(
 galop_parser(
     name = "split_parser",
     grammar = "CalcParser.g4",
-    imports = ["CalcLexer.g4"],
     kind = "parser",
     package = "split",
 )
@@ -68,13 +67,12 @@ go_test(
     embed = [":split"],
 )
 
-# Standalone flavor with listener and visitor.
+# Combined grammar, antlr flavor.
 galop_parser(
     name = "expr_parser",
-    flavor = "standalone",
+    flavor = "antlr",
     grammar = "Expr.g4",
     package = "expr",
-    visitor = True,
 )
 
 go_library(
@@ -87,6 +85,38 @@ go_test(
     name = "expr_test",
     srcs = ["expr_test.go"],
     embed = [":expr"],
+)
+
+# Separate lexer and parser grammars, antlr flavor.
+galop_parser(
+    name = "split_antlr_lexer",
+    flavor = "antlr",
+    grammar = "CalcLexer.g4",
+    kind = "lexer",
+    package = "splitantlr",
+)
+
+galop_parser(
+    name = "split_antlr_parser",
+    flavor = "antlr",
+    grammar = "CalcParser.g4",
+    kind = "parser",
+    package = "splitantlr",
+)
+
+go_library(
+    name = "split_antlr",
+    srcs = [
+        ":split_antlr_lexer",
+        ":split_antlr_parser",
+    ],
+    importpath = "github.com/martianoff/rules-gala/galop/tests/splitantlr",
+)
+
+go_test(
+    name = "split_antlr_test",
+    srcs = ["split_antlr_test.go"],
+    embed = [":split_antlr"],
 )
 
 galop_parser_test_suite(name = "galop_parser_tests")

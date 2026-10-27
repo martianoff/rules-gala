@@ -45,4 +45,14 @@ GALOP_VERSIONS = {
         "linux_amd64": "3f611410a7aa55cf762b9adba3fb7ce87e73724f98fbd499e09d0ba2e668f3e5",
         "windows_amd64": "70447a5472b94602006be4e5203c1fc57696185a006a7ade8701bc007c7d941d",
     },
+    "0.2.0": {
+        "darwin_arm64": "f446bf84f8b495fd85e14c34342d4821fd4e139d3e411b7314d938c1b41d4015",
+        "linux_amd64": "b54a10a784fc2a27571377c0545dec704734544e3d31a3a9ed328ec108253d74",
+        "windows_amd64": "5e58e4d68c7a3d0c5f17ba0fcb2af7f18e83952fa03d5fa34c8fbc9fa33d412f",
+    },
+    "0.2.1": {
+        "darwin_arm64": "0f5d38d498cf3185906c4064432958f6b9028875d7c2f5edd41d65d6f84686ab",
+        "linux_amd64": "321ad31e557731ed39105c09b5e10e70f251efd1b0fc521f47cc5c7a59415ad4",
+        "windows_amd64": "3611b5281c1e3f75fc05164811af9ab4fbc236654f3d9be81b2ed6d6613d84e9",
+    },
 }
