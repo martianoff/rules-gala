@@ -10,7 +10,7 @@ own MODULE.bazel:
 
 module(
     name = "rules_gala",
-    version = "0.6.2",
+    version = "0.6.3",
     compatibility_level = 1,
 
     # rules_gala is developed and tested against Bazel 9 (see //.bazelversion),
