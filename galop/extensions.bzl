@@ -1,19 +1,20 @@
 """Bzlmod extension that registers prebuilt galop binaries as toolchains.
 
     galop = use_extension("@rules_gala//galop:extensions.bzl", "galop")
-    galop.toolchain(version = "0.2.2")
+    galop.toolchain(version = "0.2.3")
     use_repo(galop, "galop_toolchains")
     register_toolchains("@galop_toolchains//:all")
 
-For every platform galop publishes a binary for (linux-amd64, darwin-arm64,
-windows-amd64) this declares a repo that downloads the release asset and
+For every platform the chosen galop version publishes a binary for (from 0.2.3:
+linux-amd64, linux-arm64, darwin-amd64, darwin-arm64, windows-amd64) this declares a repo that downloads the release asset and
 verifies it against the checksum table in //galop/private:versions.bzl, plus a
 galop_toolchain and a `toolchain()` constrained to that exec platform in the
 hub repo `@galop_toolchains`. Downloads are lazy: only the binary for the exec
 platform that toolchain resolution picks is fetched.
 
-Other exec platforms have no toolchain, so galop_parser fails toolchain
-resolution there; register your own galop_toolchain for them.
+Other exec platforms, and platforms an older version has no binary for, get no
+toolchain, so galop_parser fails toolchain resolution there; register your own
+galop_toolchain for them.
 
 If several modules request a version, the root module's request wins;
 otherwise the highest requested version is used.
@@ -160,18 +161,21 @@ def _galop_extension_impl(module_ctx):
     base_url = tag.base_url.rstrip("/")
     known = GALOP_VERSIONS.get(tag.version, {})
     checksums = {}
-    missing = []
     for p in sorted(PLATFORMS.keys()):
         sha = tag.sha256.get(p) or known.get(p)
-        if not sha:
-            missing.append(p)
-        checksums[p] = sha
-    if missing:
-        fail(_missing_checksum_message(tag.version, missing, base_url))
+        if sha:
+            checksums[p] = sha
+
+    # A platform without a checksum gets no toolchain: older galop releases
+    # don't publish every platform, and galop_parser then fails toolchain
+    # resolution there, as it does on any unsupported exec platform. With no
+    # checksum at all the version is unknown, which is an error.
+    if not checksums:
+        fail(_missing_checksum_message(tag.version, sorted(PLATFORMS.keys()), base_url))
 
     binary_repos = {}
     constraints = {}
-    for p in sorted(PLATFORMS.keys()):
+    for p in sorted(checksums.keys()):
         info = PLATFORMS[p]
         repo = "galop_" + p
         _galop_binary(

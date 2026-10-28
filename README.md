@@ -124,18 +124,19 @@ In your `MODULE.bazel`:
 bazel_dep(name = "rules_gala", version = "<version>")
 
 galop = use_extension("@rules_gala//galop:extensions.bzl", "galop")
-galop.toolchain(version = "0.2.2")
+galop.toolchain(version = "0.2.3")
 use_repo(galop, "galop_toolchains")
 register_toolchains("@galop_toolchains//:all")
 ```
 
 This registers prebuilt galop release binaries for the platforms galop
-publishes: **linux-amd64, darwin-arm64 and windows-amd64**. Only the binary for
-the exec platform actually used is downloaded, and each is checked against the
-SHA-256 table in [`galop/private/versions.bzl`](galop/private/versions.bzl).
-On any other exec platform (e.g. linux-arm64, darwin-amd64) there is no
-toolchain and `galop_parser` fails toolchain resolution; register your own
-toolchain there (see below).
+publishes: **linux-amd64, linux-arm64, darwin-amd64, darwin-arm64 and
+windows-amd64** (galop 0.2.3 and later; earlier releases have no linux-arm64 or
+darwin-amd64 binary). Only the binary for the exec platform actually used is
+downloaded, and each is checked against the SHA-256 table in
+[`galop/private/versions.bzl`](galop/private/versions.bzl). A platform the
+chosen version has no binary for gets no toolchain, and `galop_parser` fails
+toolchain resolution there; register your own toolchain there (see below).
 
 `galop.toolchain` also takes `sha256 = {"darwin_arm64": ..., "linux_amd64":
 ..., "windows_amd64": ...}`, to use a galop release this rules_gala version
