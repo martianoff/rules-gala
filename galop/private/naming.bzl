@@ -15,7 +15,7 @@ def _trim_suffix(s, suffix):
         return s[:-len(suffix)]
     return s
 
-def galop_go_outputs(grammar_name, kind, flavor = "native"):
+def galop_go_outputs(grammar_name, kind, flavor = "native", native_package = ""):
     """Returns the basenames of the Go files galop writes for one grammar.
 
     Follows ANTLR's Go target: the file prefix is the grammar name, lowercased.
@@ -23,15 +23,21 @@ def galop_go_outputs(grammar_name, kind, flavor = "native"):
     `lexer grammar` a trailing `Lexer`, so `parser grammar CalcParser` and
     `lexer grammar CalcLexer` produce `calc_parser.go` and `calc_lexer.go`.
     The `antlr` flavor adds `_galop` (`calc_galop_parser.go`), so its files
-    can sit next to the ones ANTLR generates.
+    can sit next to the ones ANTLR generates. Given a native package (galop's
+    `-DnativePackage`), it also writes the converter from ANTLR's trees to that
+    package's native tree, `calc_galop_native.go`, for a grammar with parser
+    rules.
 
-    galop accepts `-listener` and `-visitor` for ANTLR compatibility, but no
-    flavor writes listener or visitor files.
+    The listener and visitor galop generates (`-listener`, the default, and
+    `-visitor`) go into the native flavor's `_parser.go`; no flavor writes
+    listener or visitor files of their own.
 
     Args:
         grammar_name: the grammar name, which equals the .g4 file's base name.
         kind: "combined", "lexer" or "parser".
         flavor: "native" or "antlr".
+        native_package: the `nativePackage` define, the Go import path the antlr
+            flavor's converter writes trees for; blank for none.
 
     Returns:
         A list of file basenames.
@@ -54,6 +60,8 @@ def galop_go_outputs(grammar_name, kind, flavor = "native"):
     outs = []
     if kind in ("combined", "parser"):
         outs.append(base + "_parser.go")
+        if flavor == "antlr" and native_package.strip():
+            outs.append(base + "_native.go")
     if kind in ("combined", "lexer"):
         outs.append(base + "_lexer.go")
     return outs

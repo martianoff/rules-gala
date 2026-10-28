@@ -87,6 +87,27 @@ go_test(
     embed = [":expr"],
 )
 
+# Combined grammar, antlr flavor with the converter to a native package.
+galop_parser(
+    name = "expr_converter_parser",
+    defines = {"nativePackage": "github.com/martianoff/rules-gala/galop/tests/expr/native"},
+    flavor = "antlr",
+    grammar = "Expr.g4",
+    package = "exprconverter",
+)
+
+go_library(
+    name = "expr_converter",
+    srcs = [":expr_converter_parser"],
+    importpath = "github.com/martianoff/rules-gala/galop/tests/exprconverter",
+)
+
+go_test(
+    name = "expr_converter_test",
+    srcs = ["expr_converter_test.go"],
+    embed = [":expr_converter"],
+)
+
 # Separate lexer and parser grammars, antlr flavor.
 galop_parser(
     name = "split_antlr_lexer",

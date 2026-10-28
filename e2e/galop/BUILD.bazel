@@ -35,3 +35,56 @@ go_test(
     data = [":calc_antlr"],
     env = {"CALC_ANTLR_FILES": "$(rootpaths :calc_antlr)"},
 )
+
+# The antlr flavor with the converter to the native tree (nativePackage), built
+# next to ANTLR's own parser of the same grammar and run: ANTLR's tree and the
+# antlr flavor's convert to the native parse's tree.
+genrule(
+    name = "calc_antlr_go",
+    srcs = ["Calc.g4"],
+    outs = [
+        "calcantlr/calc_lexer.go",
+        "calcantlr/calc_parser.go",
+    ],
+    cmd = """
+        set -e
+        out=$(RULEDIR)/antlr_out
+        "$(JAVA)" -jar $(location @antlr4_tool//jar) -Dlanguage=Go -package calcantlr -no-listener \
+            -Xexact-output-dir -o "$$out" $(location Calc.g4)
+        cp "$$out"/*.go $(RULEDIR)/calcantlr/
+        rm -rf "$$out"
+    """,
+    toolchains = ["@bazel_tools//tools/jdk:current_host_java_runtime"],
+    tools = ["@antlr4_tool//jar"],
+)
+
+galop_parser(
+    name = "calc_converter",
+    defines = {"nativePackage": "github.com/martianoff/rules-gala/e2e/galop/calc"},
+    flavor = "antlr",
+    grammar = "Calc.g4",
+    package = "calcantlr",
+)
+
+go_library(
+    name = "calcantlr",
+    srcs = [
+        ":calc_antlr_go",
+        ":calc_converter",
+    ],
+    importpath = "github.com/martianoff/rules-gala/e2e/galop/calcantlr",
+    deps = [
+        ":calc",
+        "@com_github_antlr4_go_antlr_v4//:antlr",
+    ],
+)
+
+go_test(
+    name = "calc_converter_test",
+    srcs = ["calc_converter_test.go"],
+    embed = [":calcantlr"],
+    deps = [
+        ":calc",
+        "@com_github_antlr4_go_antlr_v4//:antlr",
+    ],
+)

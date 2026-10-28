@@ -19,10 +19,16 @@ def _galop_parser_impl(ctx):
             fail(("galop_parser: -D%s is set by the rule; use the `%s` attribute " +
                   "instead of `defines`") % (key, "flavor" if key == "flavor" else "language"))
 
+    native_package = ctx.attr.defines.get("nativePackage", "")
+    if native_package.strip() and ctx.attr.flavor != "antlr":
+        fail("galop_parser: the nativePackage define adds the antlr flavor's " +
+             "converter to the native tree; it needs flavor = \"antlr\"")
+
     names = galop_go_outputs(
         grammar_name = grammar_name,
         kind = ctx.attr.kind,
         flavor = ctx.attr.flavor,
+        native_package = native_package,
     )
 
     # Outputs live in a directory named after the target, so several
@@ -102,12 +108,18 @@ file name. Because Bazel must know the output file names before galop runs,
                   "ANTLR's trees: it needs ANTLR's Go runtime and ANTLR's " +
                   "generated code in the same package, and writes " +
                   "`<base>_galop_parser.go` and `<base>_galop_lexer.go` so it " +
-                  "can sit next to them. Neither flavor generates a listener " +
-                  "or visitor.",
+                  "can sit next to them. With a `nativePackage` define (the " +
+                  "native package's import path) it also writes " +
+                  "`<base>_galop_native.go`, a converter from ANTLR's trees to that native package's " +
+                  "tree. The native flavor's listener and visitor (galop's " +
+                  "`-listener` and `-visitor`, through `galop_opts`) go into " +
+                  "its `_parser.go`.",
         ),
         "defines": attr.string_dict(
             doc = "Extra grammar options passed as `-D<key>=<value>`. " +
-                  "`language` and `flavor` are set by the rule and rejected here.",
+                  "`language` and `flavor` are set by the rule and rejected here. " +
+                  "`nativePackage` (antlr flavor only) adds the converter " +
+                  "output, see `flavor`.",
         ),
         "galop_opts": attr.string_list(
             doc = "Extra raw command-line arguments, inserted before the grammar. " +
