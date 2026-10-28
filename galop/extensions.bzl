@@ -34,7 +34,10 @@ alias(
 """
 
 def _galop_binary_impl(rctx):
-    out = "galop.exe" if rctx.attr.asset.endswith(".exe") else "galop"
+    # The file sits in bin/ so it never shares a name with the "galop" alias:
+    # on Linux and macOS the asset has no extension, and a source file named
+    # like a rule in the same package is a Bazel error.
+    out = "bin/galop.exe" if rctx.attr.asset.endswith(".exe") else "bin/galop"
     rctx.download(
         url = rctx.attr.urls,
         output = out,
