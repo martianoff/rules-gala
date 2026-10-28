@@ -1,0 +1,42 @@
+"""Bazel rules and bzlmod extension for the GALA language.
+
+Consumers should add this module plus the `gala` language module to their
+own MODULE.bazel:
+
+    bazel_dep(name = "rules_gala", version = "0.1.0")
+    bazel_dep(name = "gala", version = "1.0.0")
+    register_toolchains("@gala//tools/toolchain:gala_toolchain")
+"""
+
+module(
+    name = "rules_gala",
+    version = "0.6.2",
+    compatibility_level = 1,
+
+    # rules_gala is developed and tested against Bazel 9 (see //.bazelversion),
+    # and 9 is where the repo contents cache — extracted external repositories
+    # shared across workspaces rather than unpacked once per output base — is on
+    # by default. The flag exists from 8.3 but defaults to "" there, which means
+    # disabled, so on 8.x every worktree of every consumer still re-extracts the
+    # pinned Go SDK at ~207 MB a time. See docs/BUILD_DISK_USAGE.MD in the gala
+    # repo for the measurements.
+    bazel_compatibility = [">=9.0.0"],
+)
+
+bazel_dep(name = "bazel_skylib", version = "1.7.1")
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "rules_go", version = "0.59.0")
+
+# rules_gala intentionally does NOT register a default toolchain. The
+# toolchain implementation lives in whatever module ships the GALA
+# transpiler binaries (typically the `gala` module). Consumers register
+# it explicitly from their own MODULE.bazel, e.g.:
+#
+#     register_toolchains("@gala//tools/toolchain:gala_toolchain")
+
+# Test-only: galop_parser's tests in //galop/tests run against a fake galop.
+# dev_dependency keeps this registration out of every consumer's build.
+register_toolchains(
+    "//galop/tests:fake_galop_toolchain",
+    dev_dependency = True,
+)
