@@ -39,6 +39,7 @@ func main() {
 
 func run(args []string) error {
 	var outDir, pkg, language string
+	var nativePackage *string
 	flavor := flavors[0]
 	exact := false
 	var grammars []string
@@ -58,8 +59,8 @@ func run(args []string) error {
 		case a == "-Xexact-output-dir":
 			exact = true
 		case a == "-listener" || a == "-no-listener" || a == "-visitor" || a == "-no-visitor":
-			// Accepted for ANTLR compatibility; galop generates no listener
-			// or visitor in any flavor.
+			// The native flavor puts its listener and visitor in its parser
+			// file; neither adds a file.
 		case strings.HasPrefix(a, "-D"):
 			kv := strings.SplitN(a[2:], "=", 2)
 			if len(kv) != 2 {
@@ -70,6 +71,9 @@ func run(args []string) error {
 				flavor = kv[1]
 			case "language":
 				language = kv[1]
+			case "nativePackage":
+				v := strings.TrimSpace(kv[1])
+				nativePackage = &v
 			}
 		case strings.HasPrefix(a, "-"):
 			return fmt.Errorf("unknown option %q", a)
@@ -91,7 +95,14 @@ func run(args []string) error {
 	if len(grammars) != 1 {
 		return fmt.Errorf("expected exactly one grammar, got %v", grammars)
 	}
-	return generate(grammars[0], outDir, pkg, flavor)
+	// galop's error 505 for a nativePackage it cannot use; it writes no files.
+	if nativePackage != nil && *nativePackage == "" {
+		return usageError("error(505):  Go code generation failed: nativePackage must name the native flavor's Go package, not be empty")
+	}
+	if nativePackage != nil && flavor != "antlr" {
+		return usageError(fmt.Sprintf("error(505):  Go code generation failed: nativePackage=%s needs flavor=antlr: it adds a converter to the antlr flavor's output", *nativePackage))
+	}
+	return generate(grammars[0], outDir, pkg, flavor, nativePackage != nil)
 }
 
 func known(flavor string) bool {
@@ -103,7 +114,7 @@ func known(flavor string) bool {
 	return false
 }
 
-func generate(path, outDir, pkg, flavor string) error {
+func generate(path, outDir, pkg, flavor string, converter bool) error {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -140,6 +151,10 @@ func generate(path, outDir, pkg, flavor string) error {
 	files := map[string]string{}
 	if kind != "lexer" {
 		files[fileBase+"_parser.go"] = prefix + "ParserFile"
+		// The antlr flavor's converter to the native tree (-DnativePackage).
+		if converter {
+			files[fileBase+"_native.go"] = prefix + "NativeFile"
+		}
 	}
 	if kind != "parser" {
 		files[fileBase+"_lexer.go"] = prefix + "LexerFile"

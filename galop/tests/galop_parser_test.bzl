@@ -68,6 +68,27 @@ def _reserved_define_test_impl(ctx):
 
 _reserved_define_test = analysistest.make(_reserved_define_test_impl, expect_failure = True)
 
+def _converter_test_impl(ctx):
+    env = analysistest.begin(ctx)
+    target = analysistest.target_under_test(env)
+    actions = [a for a in analysistest.target_actions(env) if a.mnemonic == "GalopGenerate"]
+    asserts.true(env, "-DnativePackage=example.com/calc/native" in actions[0].argv, "the define is passed on")
+    asserts.equals(
+        env,
+        ["calc_galop_parser.go", "calc_galop_native.go", "calc_galop_lexer.go"],
+        _basenames(target[DefaultInfo].files.to_list()),
+    )
+    return analysistest.end(env)
+
+_converter_test = analysistest.make(_converter_test_impl)
+
+def _native_package_needs_antlr_test_impl(ctx):
+    env = analysistest.begin(ctx)
+    asserts.expect_failure(env, "it needs flavor = \"antlr\"")
+    return analysistest.end(env)
+
+_native_package_needs_antlr_test = analysistest.make(_native_package_needs_antlr_test_impl, expect_failure = True)
+
 def _naming_test_impl(ctx):
     env = unittest.begin(ctx)
     cases = [
@@ -94,6 +115,16 @@ def _naming_test_impl(ctx):
             galop_go_outputs(name, kind, flavor),
             "%s %s %s" % (name, kind, flavor),
         )
+
+    # The antlr flavor's converter (nativePackage), for grammars with parser rules.
+    asserts.equals(
+        env,
+        ["calc_galop_parser.go", "calc_galop_native.go", "calc_galop_lexer.go"],
+        galop_go_outputs("Calc", "combined", "antlr", "example.com/calc/native"),
+    )
+    asserts.equals(env, ["calc_galop_parser.go", "calc_galop_native.go"], galop_go_outputs("CalcParser", "parser", "antlr", "x"))
+    asserts.equals(env, ["calc_galop_lexer.go"], galop_go_outputs("CalcLexer", "lexer", "antlr", "x"))
+    asserts.equals(env, ["calc_galop_parser.go", "calc_galop_lexer.go"], galop_go_outputs("Calc", "combined", "antlr", "  "))
 
     # native is the default flavor.
     asserts.equals(env, ["expr_parser.go", "expr_lexer.go"], galop_go_outputs("Expr", "combined"))
@@ -133,6 +164,26 @@ def galop_parser_test_suite(name):
     )
     _reserved_define_test(name = name + "_reserved_define", target_under_test = ":reserved_define_parser")
 
+    galop_parser(
+        name = "converter_parser",
+        grammar = "Calc.g4",
+        flavor = "antlr",
+        defines = {"nativePackage": "example.com/calc/native"},
+        tags = ["manual"],
+    )
+    _converter_test(name = name + "_converter", target_under_test = ":converter_parser")
+
+    galop_parser(
+        name = "native_package_native_parser",
+        grammar = "Calc.g4",
+        defines = {"nativePackage": "example.com/calc/native"},
+        tags = ["manual"],
+    )
+    _native_package_needs_antlr_test(
+        name = name + "_native_package_needs_antlr",
+        target_under_test = ":native_package_native_parser",
+    )
+
     unittest.suite(name + "_naming", _naming_test)
 
     native.test_suite(
@@ -141,6 +192,8 @@ def galop_parser_test_suite(name):
             name + "_command_line",
             name + "_minimal_command_line",
             name + "_reserved_define",
+            name + "_converter",
+            name + "_native_package_needs_antlr",
             name + "_naming",
         ],
     )
