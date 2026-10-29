@@ -19,9 +19,25 @@ func TestConverter(t *testing.T) {
 	want := native.ToStringTree()
 
 	stream := antlr.NewCommonTokenStream(NewCalcLexer(antlr.NewInputStream(src)), antlr.TokenDefaultChannel)
-	_, root := CalcToNative(NewCalcParser(stream).Prog(), stream, src)
+	prog := NewCalcParser(stream).Prog()
+	_, root := CalcToNative(prog, stream, src)
 	if got := root.ToStringTree(); got != want {
 		t.Errorf("converted ANTLR tree %s, want %s", got, want)
+	}
+
+	// From galop 0.2.5, ToNativeContexts also returns each node's context, by
+	// node index, the root's last.
+	_, croot, ctxs := CalcToNativeContexts(prog, stream, src)
+	if got := croot.ToStringTree(); got != want {
+		t.Errorf("ToNativeContexts tree %s, want %s", got, want)
+	}
+	if len(ctxs) == 0 || ctxs[len(ctxs)-1] != prog {
+		t.Errorf("ToNativeContexts: the last of %d contexts is not the root", len(ctxs))
+	}
+	for i, c := range ctxs {
+		if c == nil {
+			t.Errorf("ToNativeContexts: node %d has no context", i)
+		}
 	}
 
 	fstream := antlr.NewCommonTokenStream(NewCalcGalopLexer(antlr.NewInputStream(src)), antlr.TokenDefaultChannel)

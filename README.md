@@ -124,7 +124,7 @@ In your `MODULE.bazel`:
 bazel_dep(name = "rules_gala", version = "<version>")
 
 galop = use_extension("@rules_gala//galop:extensions.bzl", "galop")
-galop.toolchain(version = "0.2.4")
+galop.toolchain(version = "0.2.5")
 use_repo(galop, "galop_toolchains")
 register_toolchains("@galop_toolchains//:all")
 ```
