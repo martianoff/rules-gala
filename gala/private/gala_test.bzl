@@ -129,6 +129,7 @@ def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], l
             outs = transpiled_lib_srcs,
             extra_srcs = transpile_extra_srcs,
             gala_deps = gala_deps,
+            go_deps = deps,
         )
     elif len(lib_srcs) == 1:
         gala_transpile(
@@ -137,6 +138,7 @@ def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], l
             out = transpiled_lib_srcs[0],
             extra_srcs = transpile_extra_srcs,
             gala_deps = gala_deps,
+            go_deps = deps,
         )
     else:
         transpiled_lib_srcs = []
@@ -156,6 +158,7 @@ def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], l
             package_files = siblings,
             extra_srcs = transpile_extra_srcs,
             gala_deps = gala_deps,
+            go_deps = deps,
         )
 
     main_go_src = ":" + gen_name
