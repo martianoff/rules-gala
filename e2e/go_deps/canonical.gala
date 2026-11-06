@@ -1,0 +1,11 @@
+package canonical
+
+import "github.com/google/uuid"
+
+// Canonical returns s as a lower-case UUID, or "" if s isn't one. The Try's
+// element type is uuid.UUID, a type from a third-party Go module, so the
+// transpiler can only infer it from that module's source.
+func Canonical(s string) string = Try(uuid.Parse(s)) match {
+    case Success(u) => u.String()
+    case Failure(_) => ""
+}

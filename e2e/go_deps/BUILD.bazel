@@ -1,0 +1,19 @@
+load("@rules_gala//gala:defs.bzl", "gala_library", "gala_test")
+
+gala_library(
+    name = "canonical",
+    srcs = ["canonical.gala"],
+    importpath = "github.com/martianoff/rules-gala/e2e/go_deps/canonical",
+    deps = ["@com_github_google_uuid//:uuid"],
+)
+
+# gala_test transpiles the library and the tests itself, so it needs the Go
+# dep for type inference just as gala_library does.
+gala_test(
+    name = "canonical_test",
+    srcs = ["canonical_test.gala"],
+    importpath = "github.com/martianoff/rules-gala/e2e/go_deps/canonical",
+    lib_srcs = ["canonical.gala"],
+    pkg = "canonical",
+    deps = ["@com_github_google_uuid//:uuid"],
+)

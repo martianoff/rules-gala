@@ -84,6 +84,14 @@ gala_test(
 )
 ```
 
+### Go dependencies
+
+List a Go dependency in `deps` like any other. `gala_library`, `gala_binary` and
+`gala_test` also pass `deps` to the transpile step, so the transpiler can load
+the types of third-party Go modules (GALA 0.100.0 and newer reject code whose Go
+types it can't load). [`e2e/go_deps`](e2e/go_deps) checks this with a real gala
+release; run it by hand with `cd e2e/go_deps && bazel test //...`.
+
 ## Toolchain
 
 The rules resolve everything through `@rules_gala//gala:toolchain_type`. The `gala` language module ships an implementation backed by its in-repo transpiler binaries, stdlib filegroup, and test framework. To provide your own toolchain, instantiate `gala_toolchain` from `@rules_gala//gala:toolchain.bzl`:

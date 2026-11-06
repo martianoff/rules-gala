@@ -1,0 +1,15 @@
+package canonical
+
+import (
+    . "martianoff/gala/test"
+    "github.com/google/uuid"
+)
+
+func TestCanonical(t T) T =
+    Eq(t, Canonical("6BA7B810-9DAD-11D1-80B4-00C04FD430C8"), "6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+
+func TestCanonicalRejectsNonUuid(t T) T = Eq(t, Canonical("not a uuid"), "")
+
+// The test file infers a type from the Go module too, so the test sources'
+// own transpile step needs the dep as well as the library's.
+func TestParseInTest(t T) T = IsTrue(t, Try(uuid.Parse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")).IsSuccess())

@@ -1,0 +1,13 @@
+common --enable_bzlmod
+common --noenable_workspace
+
+# gala comes from the rules-gala registry; everything else from the BCR.
+common --registry=https://raw.githubusercontent.com/martianoff/rules-gala/main/
+common --registry=https://bcr.bazel.build
+
+build --enable_runfiles
+build --action_env=GOROOT
+build --action_env=PATH
+build --worker_quit_after_build
+
+try-import %workspace%/user.bazelrc
