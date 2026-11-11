@@ -2,7 +2,10 @@
 
 Bazel rules and a bzlmod extension for the [GALA](https://github.com/martianoff/gala_simple) language.
 
-This module also functions as a Bazel module registry that publishes `rules_gala` itself.
+This module also functions as a Bazel module registry. It publishes `rules_gala` itself
+and the other modules of the GALA ecosystem: `gala`, `gala_acp`, `gala_gazelle`,
+`gala_team`, `gala_tui` and [`rules_lean`](https://github.com/martianoff/rules_lean)
+(Bazel rules for Lean 4).
 
 ## Requirements
 
