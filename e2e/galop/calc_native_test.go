@@ -26,3 +26,26 @@ func TestSyntaxError(t *testing.T) {
 		t.Fatalf("got %v (%T), want a *CalcSyntaxError", err, err)
 	}
 }
+
+// From galop 0.3.0, ParseProgWithRecovery recovers from syntax errors as
+// ANTLR's default error strategy does: every error, and a recovered tree.
+func TestRecovery(t *testing.T) {
+	prog, errs := ParseProgWithRecovery(CalcLex("1 + + 2 3"))
+	if !prog.Ok() {
+		t.Fatal("no recovered tree")
+	}
+	var msgs []string
+	for _, e := range errs {
+		msgs = append(msgs, e.Error())
+	}
+	if len(msgs) < 2 {
+		t.Errorf("errors: got %q, want at least two", msgs)
+	}
+	if len(prog.Tree().ErrorKids) == 0 {
+		t.Errorf("tree %s has no error tokens", prog.ToStringTree())
+	}
+	clean, errs := ParseProgWithRecovery(CalcLex("1 + 2"))
+	if len(errs) != 0 || clean.ToStringTree() != "(prog (expr 1 + 2) <EOF>)" {
+		t.Errorf("clean input: got %s and %v", clean.ToStringTree(), errs)
+	}
+}

@@ -17,7 +17,7 @@ bazel test //...
 
 | Target             | Flavor   | Checks                                                                                           |
 |--------------------|----------|--------------------------------------------------------------------------------------------------|
-| `calc_native_test` | `native` | The generated lexer and parser compile with no dependencies, parse `1 + 22 - 3` and report a syntax error. |
+| `calc_native_test` | `native` | The generated lexer and parser compile with no dependencies, parse `1 + 22 - 3`, report a syntax error, and recover from errors (`ParseProgWithRecovery`). |
 | `calc_antlr_test`  | `antlr`  | galop writes `calc_galop_parser.go` and `calc_galop_lexer.go` in package `calc`. They are not compiled, because they need ANTLR's Go runtime and ANTLR's own generated parser in the same package. |
 
 `Calc.g4` has no left recursion because galop does not support left-recursive
