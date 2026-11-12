@@ -1,0 +1,5 @@
+{
+    "url": "https://github.com/martianoff/rules_lean/releases/download/v0.1.1/rules_lean-v0.1.1.tar.gz",
+    "integrity": "sha256-I3aSMQWkw9iROaRyY2YYXOhgN8lrh4cKx9iM8ykiWsY=",
+    "strip_prefix": "rules_lean-0.1.1"
+}
