@@ -49,3 +49,23 @@ func TestRecovery(t *testing.T) {
 		t.Errorf("clean input: got %s and %v", clean.ToStringTree(), errs)
 	}
 }
+
+// From galop 0.3.1, each error says how far the parse had read (Read), and
+// the lexer says which token each token recognition error comes before
+// (ErrorAt), so the two can be interleaved as ANTLR reports them.
+func TestReadExtent(t *testing.T) {
+	ts := CalcLex("1 + # + 2")
+	if len(ts.Errors) != 1 || len(ts.ErrorAt) != 1 {
+		t.Fatalf("lexical errors %v at %v, want one", ts.Errors, ts.ErrorAt)
+	}
+	prog, errs := ParseProgWithRecovery(ts)
+	if len(errs) == 0 {
+		t.Fatal("no syntax error")
+	}
+	if errs[0].Read < errs[0].Token {
+		t.Errorf("Read %d before the error's token %d", errs[0].Read, errs[0].Token)
+	}
+	if r := prog.Tree().Read; r != len(ts.Tokens)-1 {
+		t.Errorf("Tree.Read %d, want EOF's index %d", r, len(ts.Tokens)-1)
+	}
+}
