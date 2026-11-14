@@ -44,3 +44,22 @@ gala_test(
     lib_srcs = ["chain/report/report.gala"],
     pkg = "report",
 )
+
+# gala_test with no library, so a bare go_test, on a testonly fixture.
+gala_library(
+    name = "sample",
+    testonly = True,
+    srcs = ["chain/sample/sample.gala"],
+    gala_deps = [":geo"],
+    importpath = "github.com/martianoff/rules-gala/e2e/strict_deps/chain/sample",
+)
+
+gala_test(
+    name = "probe_test",
+    srcs = ["chain/probe/probe_test.gala"],
+    gala_deps = [
+        ":geo",
+        ":sample",
+    ],
+    pkg = "probe",
+)

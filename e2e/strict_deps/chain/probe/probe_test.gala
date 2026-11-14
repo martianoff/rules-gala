@@ -1,0 +1,14 @@
+package probe
+
+import (
+    . "martianoff/gala/test"
+    "github.com/martianoff/rules-gala/e2e/strict_deps/chain/geo"
+    "github.com/martianoff/rules-gala/e2e/strict_deps/chain/sample"
+)
+
+func TestSample(t T) T = Eq(t, sample.Y(3), 6)
+
+func TestLambda(t T) T {
+    val x = geo.Find(4).Map((p) => p.X).GetOrElse(0)
+    Eq(t, x, 4)
+}
