@@ -207,7 +207,8 @@ def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], l
             # The library's transitive deps reach the test through its embed.
             test_embed = [":" + lib_name]
         else:
-            test_embed = transitive_go_deps(name, final_deps, kwargs)
+            # A go_test is testonly by default, so its deps may be too.
+            test_embed = transitive_go_deps(name, final_deps, dict(kwargs, testonly = True))
 
         go_test(
             name = name,
