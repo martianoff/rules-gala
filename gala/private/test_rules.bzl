@@ -79,7 +79,7 @@ def gala_exec_test(name, src = None, srcs = None, expected = "", deps = [], gala
         binary = ":" + binary_name,
         expected = expected,
         is_windows = select({
-            "@platforms//os:windows": True,
+            Label("@platforms//os:windows"): True,
             "//conditions:default": False,
         }),
     )
@@ -134,7 +134,7 @@ def gala_unit_test(name, src = None, srcs = None, deps = [], **kwargs):
         name = name,
         binary = ":" + binary_name,
         is_windows = select({
-            "@platforms//os:windows": True,
+            Label("@platforms//os:windows"): True,
             "//conditions:default": False,
         }),
     )

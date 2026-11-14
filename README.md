@@ -95,6 +95,18 @@ the types of third-party Go modules (GALA 0.100.0 and newer reject code whose Go
 types it can't load). [`e2e/go_deps`](e2e/go_deps) checks this with a real gala
 release; run it by hand with `cd e2e/go_deps && bazel test //...`.
 
+### Packages reached through a dependency
+
+List only the packages your GALA code imports. The generated Go can also name
+types of packages your code reaches only through them: if `report` imports
+`geo`, and `geo.Find` returns `Option[shape.Point]`, the Go for
+`geo.Find(n).Map((p) => p.X)` is `func(p shape.Point) int`, which imports
+`shape`. So every GALA rule makes each Go library reachable from its `deps` and
+`gala_deps` a direct dependency of the Go code it generates, and Bazel's strict
+dependency check accepts the import. Nothing extra is compiled: those libraries
+are already built for your direct deps. [`e2e/strict_deps`](e2e/strict_deps)
+checks this; run it by hand with `cd e2e/strict_deps && bazel test //...`.
+
 ## Toolchain
 
 The rules resolve everything through `@rules_gala//gala:toolchain_type`. The `gala` language module ships an implementation backed by its in-repo transpiler binaries, stdlib filegroup, and test framework. To provide your own toolchain, instantiate `gala_toolchain` from `@rules_gala//gala:toolchain.bzl`:

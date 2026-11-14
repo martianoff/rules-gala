@@ -1,0 +1,7 @@
+package report
+
+import "github.com/martianoff/rules-gala/e2e/strict_deps/chain/geo"
+
+// The lambda's parameter is a shape.Point, a type of a package this file
+// does not import: its Go is `func(p shape.Point) string`.
+func Describe(n int) string = geo.Find(n).Map((p) => s"${p.X},${p.Y}").GetOrElse("none")

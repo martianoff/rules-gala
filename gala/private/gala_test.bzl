@@ -17,6 +17,7 @@ load(
     "gala_transpile",
     "gala_transpile_package",
 )
+load("//gala/private:gala_library.bzl", "transitive_go_deps_embed")
 load("//gala/private:test_rules.bzl", "gala_internal_unit_test")
 
 _TOOLCHAIN = "@rules_gala//gala:toolchain_type"
@@ -178,6 +179,7 @@ def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], l
             name = binary_name,
             srcs = all_srcs,
             deps = final_deps,
+            embed = transitive_go_deps_embed(binary_name, final_deps, {"tags": kwargs.get("tags"), "testonly": kwargs.get("testonly")}),
             **kwargs
         )
 
@@ -185,7 +187,7 @@ def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], l
             name = name,
             binary = ":" + binary_name,
             is_windows = select({
-                "@platforms//os:windows": True,
+                Label("@platforms//os:windows"): True,
                 "//conditions:default": False,
             }),
         )
@@ -199,6 +201,7 @@ def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], l
                 name = lib_name,
                 srcs = transpiled_lib_srcs + lib_go_srcs + embed,
                 deps = final_deps,
+                embed = transitive_go_deps_embed(lib_name, final_deps, {}),
                 importpath = importpath if importpath else pkg,
             )
             test_embed = [":" + lib_name]
@@ -208,7 +211,7 @@ def gala_test(name, srcs, deps = [], gala_deps = [], pkg = "main", embed = [], l
         go_test(
             name = name,
             srcs = transpiled_srcs + [main_go_src],
-            embed = test_embed,
+            embed = test_embed + transitive_go_deps_embed(name, final_deps, {"tags": kwargs.get("tags"), "testonly": True}),
             deps = final_deps,
             **kwargs
         )
