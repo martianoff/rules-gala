@@ -22,52 +22,38 @@ only the export data of the packages a file imports.
 
 load("@rules_go//go:def.bzl", "GoArchive", "GoInfo", "go_context", "new_go_info")
 
-_GalaReachableGoInfo = provider(
-    doc = "The Go library targets reachable through a target's deps.",
-    fields = {
-        "libraries": "depset of Targets that provide GoArchive, the target's own excluded.",
-    },
-)
+def _reachable_archives(deps):
+    """Returns the GoArchive of every Go library reachable from deps.
 
-def _reachable(dep, include_self):
-    """Returns the depsets of Go libraries dep makes reachable."""
-    out = []
-    if include_self and GoArchive in dep:
-        out.append(depset([dep]))
-    if _GalaReachableGoInfo in dep:
-        out.append(dep[_GalaReachableGoInfo].libraries)
-    return out
+    A GoArchive's `direct` lists the archives of its own deps, those of the
+    libraries it embeds included, so walking it covers the whole graph.
+    """
+    seen = {}
+    stack = [dep[GoArchive] for dep in deps if GoArchive in dep]
 
-def _reachable_go_libraries_aspect_impl(target, ctx):
-    transitive = []
-    for dep in getattr(ctx.rule.attr, "deps", []):
-        transitive.extend(_reachable(dep, include_self = True))
-
-    # An embedded library is compiled into this one, under its import path:
-    # its deps are reachable, it is not a package of its own.
-    for dep in getattr(ctx.rule.attr, "embed", []):
-        transitive.extend(_reachable(dep, include_self = False))
-    return [_GalaReachableGoInfo(libraries = depset(transitive = transitive))]
-
-_reachable_go_libraries_aspect = aspect(
-    implementation = _reachable_go_libraries_aspect_impl,
-    attr_aspects = ["deps", "embed"],
-)
+    # Starlark has no while loop. The walk ends when the stack is empty, long
+    # before the bound: each archive's deps are pushed once, when it is first
+    # seen.
+    for _ in range(1 << 30):
+        if not stack:
+            break
+        archive = stack.pop()
+        if archive.data.importpath in seen:
+            continue
+        seen[archive.data.importpath] = archive
+        stack.extend(archive.direct)
+    return seen.values()
 
 def _gala_transitive_go_deps_impl(ctx):
     go = go_context(ctx, include_deprecated_properties = False)
-    transitive = []
-    for dep in ctx.attr.deps:
-        transitive.extend(_reachable(dep, include_self = True))
-    libraries = depset(transitive = transitive).to_list()
-    return [new_go_info(go, ctx.attr, deps = [lib[GoArchive] for lib in libraries])]
+    return [new_go_info(go, ctx.attr, deps = _reachable_archives(ctx.attr.deps))]
 
 gala_transitive_go_deps = rule(
     implementation = _gala_transitive_go_deps_impl,
     doc = "A source-less GoInfo whose deps are every Go library reachable from deps (see the module docstring).",
     attrs = {
         "deps": attr.label_list(
-            aspects = [_reachable_go_libraries_aspect],
+            providers = [GoArchive],
             doc = "The deps of the GALA target that embeds this one.",
         ),
         "_go_context_data": attr.label(default = "@rules_go//:go_context_data"),
