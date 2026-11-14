@@ -1,0 +1,6 @@
+package sample
+
+import "github.com/martianoff/rules-gala/e2e/strict_deps/chain/geo"
+
+// A test fixture: the y of the point geo finds for n, or 0.
+func Y(n int) int = geo.Find(n).Map((p) => p.Y).GetOrElse(0)
