@@ -1,0 +1,33 @@
+"""End-to-end check that generated Go may import any GALA package it reaches.
+
+The transpiler writes out types the GALA source reaches only through another
+package: `report` imports `geo`, whose `Find` returns `Option[shape.Point]`,
+so the Go for `geo.Find(n).Map((p) => ...)` is `func(p shape.Point) ...` and
+imports `shape`. Go cannot infer a function literal's signature, so the
+import cannot be avoided. Each GALA rule makes every Go library reachable
+from its deps a direct dep (gala/private/transitive_deps.bzl); without that,
+rules_go's strict dependency check fails the build with
+`missing strict dependencies: import of ".../shape"`.
+
+Not part of rules_gala's own `bazel test //...` (the root .bazelignore skips
+e2e/): it downloads gala, so it is run by hand, from this directory:
+
+    bazel test //...
+
+It uses this checkout of rules_gala and the gala version below. gala.mod
+gives the transpiler the module path the chain/ packages' imports start with.
+"""
+
+module(name = "rules_gala_strict_deps_e2e")
+
+bazel_dep(name = "rules_gala")
+local_path_override(
+    module_name = "rules_gala",
+    path = "../..",
+)
+
+bazel_dep(name = "gala", version = "0.100.0")
+bazel_dep(name = "rules_go", version = "0.59.0")
+
+go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
+go_sdk.download(version = "1.25.5")

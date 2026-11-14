@@ -1,0 +1,16 @@
+package report
+
+import (
+    . "martianoff/gala/test"
+    "github.com/martianoff/rules-gala/e2e/strict_deps/chain/geo"
+)
+
+func TestDescribe(t T) T = Eq(t, Describe(3), "3,6")
+
+func TestDescribeNone(t T) T = Eq(t, Describe(0), "none")
+
+// The test file names shape.Point too, through geo.
+func TestLambdaInTest(t T) T {
+    val y = geo.Find(2).Map((p) => p.Y).GetOrElse(0)
+    Eq(t, y, 4)
+}

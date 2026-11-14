@@ -1,0 +1,14 @@
+package main
+
+import (
+    "github.com/martianoff/rules-gala/e2e/strict_deps/chain/geo"
+    "github.com/martianoff/rules-gala/e2e/strict_deps/chain/report"
+)
+
+func main() {
+    Println(report.Describe(3))
+    Println(geo.Find(2).Map((p) => s"lambda ${p.Y}").GetOrElse("none"))
+    // An if used as a value: its Go is a func literal returning shape.Point.
+    val p = if (geo.Find(1).IsDefined()) geo.Find(1).Get() else geo.Find(5).Get()
+    Println(s"if ${p.X},${p.Y}")
+}

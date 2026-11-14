@@ -1,0 +1,7 @@
+package geo
+
+import "github.com/martianoff/rules-gala/e2e/strict_deps/chain/shape"
+
+// The point (n, 2n) for a positive n.
+func Find(n int) Option[shape.Point] =
+    if (n > 0) Some(shape.Point(X = n, Y = n * 2)) else None()

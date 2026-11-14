@@ -1,0 +1,46 @@
+load("@rules_gala//gala:defs.bzl", "gala_exec_test", "gala_library", "gala_test")
+
+# shape <- geo <- report <- main. report and main name shape.Point in their
+# generated Go (a lambda parameter, an if used as a value) without importing
+# shape, so its import must pass Bazel's strict dependency check.
+
+gala_library(
+    name = "shape",
+    srcs = ["chain/shape/shape.gala"],
+    importpath = "github.com/martianoff/rules-gala/e2e/strict_deps/chain/shape",
+)
+
+gala_library(
+    name = "geo",
+    srcs = ["chain/geo/geo.gala"],
+    gala_deps = [":shape"],
+    importpath = "github.com/martianoff/rules-gala/e2e/strict_deps/chain/geo",
+)
+
+gala_library(
+    name = "report",
+    srcs = ["chain/report/report.gala"],
+    gala_deps = [":geo"],
+    importpath = "github.com/martianoff/rules-gala/e2e/strict_deps/chain/report",
+)
+
+# gala_library and gala_binary (through gala_exec_test).
+gala_exec_test(
+    name = "main_test",
+    src = "main.gala",
+    expected = "main.out",
+    gala_deps = [
+        ":geo",
+        ":report",
+    ],
+)
+
+# gala_test, an internal test: go_library + go_test.
+gala_test(
+    name = "report_test",
+    srcs = ["chain/report/report_test.gala"],
+    gala_deps = [":geo"],
+    importpath = "github.com/martianoff/rules-gala/e2e/strict_deps/chain/report",
+    lib_srcs = ["chain/report/report.gala"],
+    pkg = "report",
+)
