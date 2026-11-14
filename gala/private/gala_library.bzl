@@ -16,30 +16,30 @@ load("//gala/private:transitive_deps.bzl", "gala_transitive_go_deps")
 
 _STDLIB = "@gala//std"
 
-def transitive_go_deps_embed(name, deps, kwargs):
+def transitive_go_deps(name, deps, attrs):
     """Declares the gala_transitive_go_deps target of a GALA target's Go rule.
 
     Generated Go may name a type of any package reachable through deps (see
-    transitive_deps.bzl), so the Go rule embeds a target that makes those
-    packages direct deps.
+    transitive_deps.bzl), so the Go rule embeds this target, which makes
+    those packages direct deps.
 
     Args:
         name: Name of the Go rule.
         deps: The Go rule's deps.
-        kwargs: The Go rule's other attributes. testonly, tags and
-            target_compatible_with are copied; `embed` is popped.
+        attrs: The Go rule's other attributes; testonly, tags and
+            target_compatible_with are copied.
 
     Returns:
-        The Go rule's embed list, with the new target appended.
+        A list holding the new target's label, to add to the Go rule's embed.
     """
     gala_transitive_go_deps(
         name = name + "_transitive_go_deps",
         deps = deps,
-        testonly = kwargs.get("testonly"),
-        tags = kwargs.get("tags"),
-        target_compatible_with = kwargs.get("target_compatible_with"),
+        testonly = attrs.get("testonly"),
+        tags = attrs.get("tags"),
+        target_compatible_with = attrs.get("target_compatible_with"),
     )
-    return list(kwargs.pop("embed", [])) + [":" + name + "_transitive_go_deps"]
+    return [":" + name + "_transitive_go_deps"]
 
 def _resolve_srcs(name, src, srcs):
     if src and srcs:
@@ -98,7 +98,7 @@ def gala_library(name, src = None, srcs = None, importpath = "", deps = [], gala
         )
 
     all_deps = list(deps) + list(gala_deps) + [_STDLIB]
-    embed = transitive_go_deps_embed(name, all_deps, kwargs)
+    embed = kwargs.pop("embed", []) + transitive_go_deps(name, all_deps, kwargs)
 
     go_library(
         name = name,
@@ -146,7 +146,7 @@ def gala_binary(name, src = None, srcs = None, deps = [], gala_deps = [], embeds
         )
 
     all_deps = list(deps) + list(gala_deps) + [_STDLIB]
-    embed = transitive_go_deps_embed(name, all_deps, kwargs)
+    embed = kwargs.pop("embed", []) + transitive_go_deps(name, all_deps, kwargs)
 
     go_binary(
         name = name,
