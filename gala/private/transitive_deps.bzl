@@ -44,9 +44,40 @@ def _reachable_archives(deps):
         stack.extend(archive.direct)
     return seen.values()
 
+GalaLibraryInfo = provider(
+    doc = "Marks a Go library as a GALA package, whose types the transpiler " +
+          "reads from its .gala source. A Go library is marked when it " +
+          "embeds a target that carries this provider: every GALA macro " +
+          "embeds a gala_transitive_go_deps target in the go_library, " +
+          "go_binary or go_test it creates, and a hand-wired GALA package " +
+          "(gala_bootstrap_transpile plus go_library) embeds a " +
+          "gala_package_marker.",
+    fields = {},
+)
+
+def _gala_package_marker_impl(ctx):
+    go = go_context(ctx, include_deprecated_properties = False)
+    return [new_go_info(go, ctx.attr), GalaLibraryInfo()]
+
+gala_package_marker = rule(
+    implementation = _gala_package_marker_impl,
+    doc = "Embed in the go_library of a hand-wired GALA package (one built " +
+          "with gala_bootstrap_transpile) to mark it as GALA: the transpiler " +
+          "then reads its types from its .gala source, never from its " +
+          "compiled Go. GALA macros mark their libraries themselves.",
+    attrs = {
+        "_go_context_data": attr.label(default = "@rules_go//:go_context_data"),
+    },
+    toolchains = ["@rules_go//go:toolchain"],
+    provides = [GoInfo, GalaLibraryInfo],
+)
+
 def _gala_transitive_go_deps_impl(ctx):
     go = go_context(ctx, include_deprecated_properties = False)
-    return [new_go_info(go, ctx.attr, deps = _reachable_archives(ctx.attr.deps))]
+    return [
+        new_go_info(go, ctx.attr, deps = _reachable_archives(ctx.attr.deps)),
+        GalaLibraryInfo(),
+    ]
 
 gala_transitive_go_deps = rule(
     implementation = _gala_transitive_go_deps_impl,
@@ -59,5 +90,5 @@ gala_transitive_go_deps = rule(
         "_go_context_data": attr.label(default = "@rules_go//:go_context_data"),
     },
     toolchains = ["@rules_go//go:toolchain"],
-    provides = [GoInfo],
+    provides = [GoInfo, GalaLibraryInfo],
 )

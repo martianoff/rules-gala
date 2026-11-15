@@ -11,10 +11,15 @@ Toggle at the build level:
     bazel build --@rules_gala//gala:use_persistent_worker=false //...
 """
 
-load("//gala/private:go_srcs.bzl", "gala_go_srcs_aspect", "go_src_entry", "go_src_info")
+load("@rules_go//go:def.bzl", "go_context")
+load("//gala/private:go_exports.bzl", "gala_go_deps_aspect", "go_deps_info", "go_export_entry", "go_src_entry")
 
 _TOOLCHAIN = "@rules_gala//gala:toolchain_type"
 _BOOTSTRAP_TOOLCHAIN = "@rules_gala//gala:bootstrap_toolchain_type"
+
+# Only needed to find the compiled standard library for --go-stdlib-export.
+_GO_TOOLCHAIN_TYPE = "@rules_go//go:toolchain"
+_GO_TOOLCHAIN = config_common.toolchain_type(_GO_TOOLCHAIN_TYPE, mandatory = False)
 
 # ---- shared helpers --------------------------------------------------------
 
@@ -53,6 +58,32 @@ def _dep_search_shell_prelude(gala_deps):
         parts.append("_dep_search=\"$${_dep_search},$${_pkg_dir},$${_pkg_dir%/*}\"")
 
     return " ; ".join(parts) + " ; ", "$${_dep_search}"
+
+def _stdlib_export(ctx):
+    """The compiled standard library's archive directory, and its files.
+
+    rules_go compiles the standard library into <root>/<installsuffix>/, which
+    holds an <importpath>.a archive per package. A standard library taken
+    prebuilt from the SDK has none in current Go releases, and there is none
+    without a Go toolchain: the transpiler then reads it from source.
+
+    Returns:
+        (dir, depset of files), or ("", None).
+    """
+    if not ctx.toolchains[_GO_TOOLCHAIN_TYPE]:
+        return "", None
+    go = go_context(ctx, include_deprecated_properties = False)
+    root = go.stdlib.root_file
+    if not root.is_directory:
+        return "", None
+
+    # rules_go's installsuffix(mode), which it does not export.
+    suffix = go.mode.goos + "_" + go.mode.goarch
+    if go.mode.race:
+        suffix += "_race"
+    elif go.mode.msan:
+        suffix += "_msan"
+    return root.path + "/" + suffix, go.stdlib.libs
 
 # ---- persistent-worker rule -----------------------------------------------
 
@@ -99,16 +130,34 @@ def _gala_transpile_worker_impl(ctx):
 
     args.add("--search=" + ",".join(search_paths))
 
-    # Every Go library reachable from go_deps, not only the direct ones: a Go
-    # dep's API names the types of its own deps (see go_srcs.bzl).
-    go_srcs = go_src_info(ctx.attr.go_deps)
+    go_deps = go_deps_info(ctx.attr.go_deps)
     args.add_joined(
-        go_srcs.archives,
+        go_deps.direct,
         map_each = go_src_entry,
         join_with = ",",
         format_joined = "--go-src=%s",
         omit_if_empty = True,
     )
+    go_inputs = [go_deps.direct_srcs]
+
+    # The export data of every Go library reachable from go_deps, and of the
+    # standard library: a Go dep's API names the types of its own deps (see
+    # go_exports.bzl). Only a transpiler that takes the flags gets them. The
+    # standard library's goes to every transpile, Go deps or not: the worker
+    # drops what it read from export data when a request names other files.
+    if info.go_export_data:
+        args.add_joined(
+            go_deps.archives,
+            map_each = go_export_entry,
+            join_with = ",",
+            format_joined = "--go-export=%s",
+            omit_if_empty = True,
+        )
+        go_inputs.append(go_deps.exports)
+        stdlib_dir, stdlib_files = _stdlib_export(ctx)
+        if stdlib_dir:
+            args.add("--go-stdlib-export=" + stdlib_dir)
+            go_inputs.append(stdlib_files)
 
     goroot = ctx.configuration.default_shell_env.get("GOROOT", "")
     if goroot:
@@ -122,7 +171,7 @@ def _gala_transpile_worker_impl(ctx):
 
     transitive_inputs = [d[DefaultInfo].files for d in ctx.attr.gala_deps]
     transitive_inputs.append(info.all_gala_sources)
-    transitive_inputs.append(go_srcs.srcs)
+    transitive_inputs.extend(go_inputs)
 
     inputs = depset(direct = direct_inputs, transitive = transitive_inputs)
 
@@ -149,7 +198,7 @@ def _gala_transpile_worker_impl(ctx):
 
 gala_transpile_worker_single = rule(
     implementation = _gala_transpile_worker_impl,
-    toolchains = [_TOOLCHAIN],
+    toolchains = [_TOOLCHAIN, _GO_TOOLCHAIN],
     attrs = {
         "src": attr.label(allow_single_file = [".gala"], mandatory = True),
         "out": attr.output(mandatory = True),
@@ -157,14 +206,15 @@ gala_transpile_worker_single = rule(
         "package_files": attr.label_list(allow_files = [".gala"], default = []),
         "extra_srcs": attr.label_list(allow_files = True, default = []),
         "gala_deps": attr.label_list(default = []),
-        "go_deps": attr.label_list(default = [], aspects = [gala_go_srcs_aspect]),
+        "go_deps": attr.label_list(default = [], aspects = [gala_go_deps_aspect]),
         "batch": attr.bool(default = False),
+        "_go_context_data": attr.label(default = "@rules_go//:go_context_data"),
     },
 )
 
 gala_transpile_worker_batch = rule(
     implementation = _gala_transpile_worker_impl,
-    toolchains = [_TOOLCHAIN],
+    toolchains = [_TOOLCHAIN, _GO_TOOLCHAIN],
     attrs = {
         "src": attr.label(allow_single_file = [".gala"]),  # unused
         "srcs": attr.label_list(allow_files = [".gala"], mandatory = True),
@@ -172,8 +222,9 @@ gala_transpile_worker_batch = rule(
         "package_files": attr.label_list(allow_files = [".gala"], default = []),
         "extra_srcs": attr.label_list(allow_files = True, default = []),
         "gala_deps": attr.label_list(default = []),
-        "go_deps": attr.label_list(default = [], aspects = [gala_go_srcs_aspect]),
+        "go_deps": attr.label_list(default = [], aspects = [gala_go_deps_aspect]),
         "batch": attr.bool(default = True),
+        "_go_context_data": attr.label(default = "@rules_go//:go_context_data"),
     },
 )
 
@@ -194,8 +245,9 @@ def gala_transpile(name, src, out = None, package_files = [], extra_srcs = [], g
             filegroups are auto-included so the transpiler can resolve
             types from those packages.
         go_deps: Go libraries the GALA code uses. The transpiler gets the
-            source of each, and of every Go library they depend on. The
-            genrule fallback (use_worker = False) does not pass them.
+            source of each and, with a toolchain that sets go_export_data,
+            the export data of every Go library they reach. The genrule
+            fallback (use_worker = False) does not pass them.
         use_worker: If True (default), use the persistent-worker rule.
             Set False to fall back to the genrule path.
     """

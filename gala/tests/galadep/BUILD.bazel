@@ -1,0 +1,8 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "galadep",
+    srcs = ["galadep.go"],
+    importpath = "example.com/galadep",
+    visibility = ["//gala/tests:__subpackages__"],
+)

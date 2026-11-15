@@ -3,6 +3,7 @@ load("@rules_go//go:def.bzl", "go_library")
 go_library(
     name = "leaf",
     srcs = ["leaf.go"],
+    importmap = "example.com/vendor/leaf",
     importpath = "example.com/leaf",
     visibility = ["//gala/tests:__subpackages__"],
 )

@@ -95,10 +95,33 @@ the types of third-party Go modules (GALA 0.100.0 and newer reject code whose Go
 types it can't load). [`e2e/go_deps`](e2e/go_deps) checks this with a real gala
 release; run it by hand with `cd e2e/go_deps && bazel test //...`.
 
-The transpile step gets the source of every Go library reachable from `deps`,
-not only the ones you list: cobra's `Command.Flags()` returns a
-`*pflag.FlagSet`, so `cmd.Flags().GetString("x")` is a `Try[string]` only if the
-transpiler can read pflag too. List cobra alone; pflag comes with it.
+The transpiler also needs the types of the Go libraries you don't list:
+cobra's `Command.Flags()` returns a `*pflag.FlagSet`, so
+`cmd.Flags().GetString("x")` is a `Try[string]` only if it knows pflag too.
+With a toolchain that sets `go_export_data` (see [Toolchain](#toolchain)), the
+transpile step gets the compiler export data rules_go has already written for
+every Go library reachable from `deps`, and for the standard library, so the
+transpiler reads their types instead of type-checking them from source. List
+cobra alone; pflag comes with it.
+
+GALA packages are left out of that: their types come from their `.gala`
+source. `gala_library`, `gala_binary` and `gala_test` mark the libraries they
+create. A GALA package you wire by hand, with `gala_bootstrap_transpile` and a
+`go_library`, must be marked too: embed a `gala_package_marker` in its
+`go_library`.
+
+```starlark
+load("@rules_gala//gala:defs.bzl", "gala_bootstrap_transpile", "gala_package_marker")
+
+gala_package_marker(name = "gala_package")
+
+go_library(
+    name = "mypkg",
+    srcs = ["mypkg.gen.go", "helpers.go"],
+    embed = [":gala_package"],
+    importpath = "example.com/mypkg",
+)
+```
 
 ### Packages reached through a dependency
 
@@ -128,6 +151,10 @@ gala_toolchain(
     test_gen          = "//path/to:gala_test_gen",
     all_gala_sources  = "//:all_gala_sources",
     go_mod            = "//:go.mod",
+    # The transpiler takes --go-export and --go-stdlib-export (gala releases
+    # after 0.101.0). Leave it unset for an older transpiler, which rejects
+    # those flags.
+    go_export_data    = True,
 )
 
 toolchain(

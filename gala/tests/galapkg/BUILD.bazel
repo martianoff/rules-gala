@@ -1,0 +1,15 @@
+load("@rules_go//go:def.bzl", "go_library")
+load("//gala:defs.bzl", "gala_package_marker")
+
+# Stands in for a hand-wired GALA package: its types come from its .gala
+# source, so it has no --go-export entry, but its Go dep does.
+gala_package_marker(name = "marker")
+
+go_library(
+    name = "galapkg",
+    srcs = ["galapkg.go"],
+    embed = [":marker"],
+    importpath = "example.com/galapkg",
+    visibility = ["//gala/tests:__subpackages__"],
+    deps = ["//gala/tests/galadep"],
+)

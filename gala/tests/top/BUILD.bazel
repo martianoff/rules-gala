@@ -5,5 +5,8 @@ go_library(
     srcs = ["top.go"],
     importpath = "example.com/top",
     visibility = ["//gala/tests:__pkg__"],
-    deps = ["//gala/tests/mid"],
+    deps = [
+        "//gala/tests/galapkg",
+        "//gala/tests/mid",
+    ],
 )
