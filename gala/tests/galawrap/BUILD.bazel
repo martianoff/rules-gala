@@ -1,0 +1,9 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+# Embeds the GALA package, so it is one too: no --go-export entry.
+go_library(
+    name = "galawrap",
+    embed = ["//gala/tests/galapkg"],
+    importpath = "example.com/galapkg",
+    visibility = ["//gala/tests:__subpackages__"],
+)

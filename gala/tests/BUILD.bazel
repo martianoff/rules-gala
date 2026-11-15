@@ -1,0 +1,34 @@
+load("//gala:toolchain.bzl", "gala_toolchain")
+load(":go_exports_test.bzl", "go_exports_test_suite")
+
+# go_exports_test.bzl walks the Go graph in the packages below: top -> mid ->
+# leaf, mid embeds a library (embedded) whose own dep, embeddep, mid reaches
+# only through the embed, top -> galapkg, a GALA package, -> galadep, and
+# galawrap embeds galapkg.
+go_exports_test_suite(name = "go_exports_test")
+
+# Two GALA toolchains, one whose transpiler takes --go-export and one whose
+# does not. The tests select one with --extra_toolchains; neither is
+# registered, so nothing else sees them. Analysis tests never run the binary.
+gala_toolchain(
+    name = "export_toolchain_impl",
+    gala_binary = "//gala/tests/fake_gala",
+    go_export_data = True,
+)
+
+toolchain(
+    name = "export_toolchain",
+    toolchain = ":export_toolchain_impl",
+    toolchain_type = "//gala:toolchain_type",
+)
+
+gala_toolchain(
+    name = "no_export_toolchain_impl",
+    gala_binary = "//gala/tests/fake_gala",
+)
+
+toolchain(
+    name = "no_export_toolchain",
+    toolchain = ":no_export_toolchain_impl",
+    toolchain_type = "//gala:toolchain_type",
+)

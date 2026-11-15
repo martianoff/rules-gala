@@ -1,0 +1,22 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+# A generated file ahead of the checked-in ones, as a GALA library lists its
+# .gen.go files ahead of its hand-written .go.
+genrule(
+    name = "generated",
+    outs = ["generated.go"],
+    cmd = "echo package mid > $@",
+)
+
+go_library(
+    name = "mid",
+    srcs = [
+        ":generated",
+        "mid.go",
+        "mid.s",
+    ],
+    embed = ["//gala/tests/embedded"],
+    importpath = "example.com/mid",
+    visibility = ["//gala/tests:__subpackages__"],
+    deps = ["//gala/tests/leaf"],
+)

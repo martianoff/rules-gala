@@ -11,6 +11,7 @@ Load everything from here:
         "gala_transpile",
         "gala_transpile_package",
         "gala_bootstrap_transpile",
+        "gala_package_marker",
         "gala_imports_helper",
     )
 """
@@ -36,6 +37,10 @@ load(
     _gala_transpile_package = "gala_transpile_package",
 )
 load(
+    "//gala/private:transitive_deps.bzl",
+    _gala_package_marker = "gala_package_marker",
+)
+load(
     "//gala/private:gazelle.bzl",
     _gala_imports_helper = "gala_imports_helper",
 )
@@ -48,4 +53,5 @@ gala_unit_test = _gala_unit_test
 gala_transpile = _gala_transpile
 gala_transpile_package = _gala_transpile_package
 gala_bootstrap_transpile = _gala_bootstrap_transpile
+gala_package_marker = _gala_package_marker
 gala_imports_helper = _gala_imports_helper

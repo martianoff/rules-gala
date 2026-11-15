@@ -21,6 +21,9 @@ GalaToolchainInfo = provider(
                             "the transpiler is allowed to --search.",
         "go_mod": "File: the consuming repo's go.mod, used to derive its " +
                   "module root for the transpiler's --search path.",
+        "go_export_data": "bool: the transpiler takes --go-export and " +
+                          "--go-stdlib-export, so the transpile rules hand it the " +
+                          "export data of a target's Go deps.",
     },
 )
 
@@ -48,6 +51,7 @@ def _gala_toolchain_impl(ctx):
         test_gen = ctx.attr.test_gen[DefaultInfo].files_to_run if ctx.attr.test_gen else None,
         all_gala_sources = depset(ctx.files.all_gala_sources),
         go_mod = ctx.file.go_mod,
+        go_export_data = ctx.attr.go_export_data,
     )
     return [platform_common.ToolchainInfo(galainfo = info)]
 
@@ -87,6 +91,16 @@ gala_toolchain = rule(
             allow_single_file = True,
             doc = "The consuming repo's go.mod. Its directory becomes the " +
                   "default --search path entry for the transpiler.",
+        ),
+        "go_export_data": attr.bool(
+            doc = "Set when the transpiler takes --go-export and " +
+                  "--go-stdlib-export (gala releases after 0.101.0). The transpile " +
+                  "rules then give it the compiler export data of every Go " +
+                  "library a target reaches, and the standard library's, " +
+                  "instead of only the source of its direct Go deps. An older " +
+                  "transpiler rejects those flags, so it stays unset for one. A " +
+                  "transition switch: once every supported gala takes the " +
+                  "flags, it goes.",
         ),
     },
 )

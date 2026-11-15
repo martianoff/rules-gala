@@ -1,0 +1,8 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "embeddep",
+    srcs = ["embeddep.go"],
+    importpath = "example.com/embeddep",
+    visibility = ["//gala/tests:__subpackages__"],
+)
