@@ -1,0 +1,9 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "top",
+    srcs = ["top.go"],
+    importpath = "example.com/top",
+    visibility = ["//gala/tests:__pkg__"],
+    deps = ["//gala/tests/mid"],
+)

@@ -1,0 +1,10 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+# Embedded in //gala/tests/mid, so it shares mid's import path.
+go_library(
+    name = "embedded",
+    srcs = ["embedded.go"],
+    importpath = "example.com/mid",
+    visibility = ["//gala/tests:__subpackages__"],
+    deps = ["//gala/tests/embeddep"],
+)

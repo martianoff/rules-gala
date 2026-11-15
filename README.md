@@ -95,6 +95,11 @@ the types of third-party Go modules (GALA 0.100.0 and newer reject code whose Go
 types it can't load). [`e2e/go_deps`](e2e/go_deps) checks this with a real gala
 release; run it by hand with `cd e2e/go_deps && bazel test //...`.
 
+The transpile step gets the source of every Go library reachable from `deps`,
+not only the ones you list: cobra's `Command.Flags()` returns a
+`*pflag.FlagSet`, so `cmd.Flags().GetString("x")` is a `Try[string]` only if the
+transpiler can read pflag too. List cobra alone; pflag comes with it.
+
 ### Packages reached through a dependency
 
 List only the packages your GALA code imports. The generated Go can also name

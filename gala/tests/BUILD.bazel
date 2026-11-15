@@ -1,0 +1,6 @@
+load(":go_srcs_test.bzl", "go_srcs_test_suite")
+
+# go_srcs_test.bzl walks the Go graph in the packages below: top -> mid ->
+# leaf, and mid embeds a library (embedded) whose own dep, embeddep, mid
+# reaches only through the embed.
+go_srcs_test_suite(name = "go_srcs_test")

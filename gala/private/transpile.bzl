@@ -11,49 +11,12 @@ Toggle at the build level:
     bazel build --@rules_gala//gala:use_persistent_worker=false //...
 """
 
-load("@rules_go//go:def.bzl", "GoInfo")
+load("//gala/private:go_srcs.bzl", "gala_go_srcs_aspect", "go_src_entry", "go_src_info")
 
 _TOOLCHAIN = "@rules_gala//gala:toolchain_type"
 _BOOTSTRAP_TOOLCHAIN = "@rules_gala//gala:bootstrap_toolchain_type"
 
 # ---- shared helpers --------------------------------------------------------
-
-def _go_src_args_and_inputs(go_deps):
-    """Build the --go-src map and the .go source inputs for Go dependencies.
-
-    The transpiler's analyzer resolves third-party Go MODULE types by parsing
-    the dependency's real .go source (go/importer's source mode can't find a
-    versioned module in Bazel's external tree). For each Go dependency we read
-    its GoInfo provider to get the import path and source files, then emit a
-    `<importpath>=<dir>` entry pointing at the package's source directory.
-
-    GALA-library deps surface here too (a gala_library is a go_library under
-    the hood), but their sources are generated .gen.go files which the
-    analyzer skips, so passing them is a harmless no-op — their GALA-side
-    types come through gala_deps instead.
-
-    Returns (entries, files): a list of "importpath=dir" strings and the flat
-    list of File objects to stage as action inputs.
-    """
-    entries = []
-    files = []
-    seen = {}
-    for dep in go_deps:
-        if GoInfo not in dep:
-            continue
-        info = dep[GoInfo]
-        importpath = getattr(info, "importpath", "")
-        srcs = getattr(info, "srcs", [])
-        if hasattr(srcs, "to_list"):
-            srcs = srcs.to_list()
-        if not importpath or not srcs:
-            continue
-        if importpath in seen:
-            continue
-        seen[importpath] = True
-        entries.append(importpath + "=" + srcs[0].dirname)
-        files.extend(srcs)
-    return entries, files
 
 def _gala_sources_label(dep):
     """Translate a gala_library label to its `_gala_sources` filegroup."""
@@ -136,15 +99,22 @@ def _gala_transpile_worker_impl(ctx):
 
     args.add("--search=" + ",".join(search_paths))
 
-    go_src_entries, go_src_files = _go_src_args_and_inputs(ctx.attr.go_deps)
-    if go_src_entries:
-        args.add("--go-src=" + ",".join(go_src_entries))
+    # Every Go library reachable from go_deps, not only the direct ones: a Go
+    # dep's API names the types of its own deps (see go_srcs.bzl).
+    go_srcs = go_src_info(ctx.attr.go_deps)
+    args.add_joined(
+        go_srcs.archives,
+        map_each = go_src_entry,
+        join_with = ",",
+        format_joined = "--go-src=%s",
+        omit_if_empty = True,
+    )
 
     goroot = ctx.configuration.default_shell_env.get("GOROOT", "")
     if goroot:
         args.add("--goroot=" + goroot)
 
-    direct_inputs = list(ctx.files.srcs) + list(ctx.files.package_files) + list(ctx.files.extra_srcs) + go_src_files
+    direct_inputs = list(ctx.files.srcs) + list(ctx.files.package_files) + list(ctx.files.extra_srcs)
     if go_mod:
         direct_inputs.append(go_mod)
     if not ctx.attr.batch:
@@ -152,6 +122,7 @@ def _gala_transpile_worker_impl(ctx):
 
     transitive_inputs = [d[DefaultInfo].files for d in ctx.attr.gala_deps]
     transitive_inputs.append(info.all_gala_sources)
+    transitive_inputs.append(go_srcs.srcs)
 
     inputs = depset(direct = direct_inputs, transitive = transitive_inputs)
 
@@ -186,7 +157,7 @@ gala_transpile_worker_single = rule(
         "package_files": attr.label_list(allow_files = [".gala"], default = []),
         "extra_srcs": attr.label_list(allow_files = True, default = []),
         "gala_deps": attr.label_list(default = []),
-        "go_deps": attr.label_list(default = []),
+        "go_deps": attr.label_list(default = [], aspects = [gala_go_srcs_aspect]),
         "batch": attr.bool(default = False),
     },
 )
@@ -201,7 +172,7 @@ gala_transpile_worker_batch = rule(
         "package_files": attr.label_list(allow_files = [".gala"], default = []),
         "extra_srcs": attr.label_list(allow_files = True, default = []),
         "gala_deps": attr.label_list(default = []),
-        "go_deps": attr.label_list(default = []),
+        "go_deps": attr.label_list(default = [], aspects = [gala_go_srcs_aspect]),
         "batch": attr.bool(default = True),
     },
 )
@@ -222,6 +193,9 @@ def gala_transpile(name, src, out = None, package_files = [], extra_srcs = [], g
         gala_deps: Other gala_library labels. Their `_gala_sources`
             filegroups are auto-included so the transpiler can resolve
             types from those packages.
+        go_deps: Go libraries the GALA code uses. The transpiler gets the
+            source of each, and of every Go library they depend on. The
+            genrule fallback (use_worker = False) does not pass them.
         use_worker: If True (default), use the persistent-worker rule.
             Set False to fall back to the genrule path.
     """
